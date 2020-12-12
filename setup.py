@@ -5,7 +5,11 @@ setup(
     url='https://github.com/jladan/package_demo',
     author='Bjoern Mayer',
     author_email='bjoern.mayer92@gmai.com',
-    packages=['climate_ml'],
+    package_dir = {"climate_ml":"climate_ml",
+                    "climate_ml.preprocessing":"climate_ml/preprocessing",
+                    "climate_ml.model":"climate_ml/model"
+                    "climate_ml.dataset": "climate_ml/dataset"}
+    packages=["climate_ml","climate_ml.preprocessing","climate_ml.model","climate_ml.dataset"],
     install_requires=["numpy","xarray"],
     version='0.1',
     license='MIT',
