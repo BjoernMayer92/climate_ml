@@ -3,7 +3,9 @@ import os
 import pickle
 import keras
 import numpy as np
-import plotting
+import innvestigate
+import datetime
+
 
 def align_coords(data_origin_coords, data):
     n_x = data_origin_coords["lon"].sizes["x"]
@@ -28,17 +30,21 @@ class ml_model():
         
     def save_model(self,path,name):
         model_path      = os.path.join(path,name)
-        os.system("mkdir " +model_path)
+        self.model_path = model_path
+        os.system("mkdir -p " +model_path)
         config_filename = os.path.join(model_path, "config.pkl")
         
         dictionary = self.__dict__.copy()
         del dictionary["model"]
-
-        print(dictionary)
+        del dictionary["dataset"]
+        del dictionary["optimizer"]
+        
+        
+        #print(dictionary)
         with open(config_filename, 'wb') as handle:
             pickle.dump(dictionary, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
-        self.model.save(model_path)
+        self.model.save(os.path.join(model_path,"model"))
     
     def load_model(self,path,name):
         model_path      = os.path.join(path,name)
@@ -48,7 +54,7 @@ class ml_model():
         
         
         self.__dict__ = dictionary
-        self.model = keras.models.load_model(model_path)
+        self.model = keras.models.load_model(os.path.join(model_path,"model"))
     
     
  
@@ -111,7 +117,7 @@ class ml_model():
         self.batch_size           = batch_size
             
             
-        self.model.fit(
+        history = self.model.fit(
             self.dataset.input_data_stack.transpose("sample","feature").values,
             self.dataset.label_data_stack.transpose("sample","output").values,
             epochs=epochs,
@@ -119,7 +125,8 @@ class ml_model():
             shuffle=True,
             validation_split=validation_split,
             verbose = verbose)
-            
+        
+        self.history = history
         
     def check_layer_output(self, layer_index=1):
         """
@@ -203,7 +210,6 @@ class ml_model():
                                          dims = ("output"),
                                          coords = (self.dataset.output,)).rename("bias_layer_output").unstack(dim="output"))
        
-        return weights_layers, biases_layers
         weights = xr.merge(weights_layers)
         biases  = xr.merge(biases_layers)
 
@@ -214,28 +220,51 @@ class ml_model():
         
         
     def LRP(self, analyzer = "deep_taylor",softmax = True):
-        #Remove the softmax layer from the model
+        
+        #Remove the softmax layer from the model if the last layer is a softmax layer
         if(softmax):
             innvestigate_model = innvestigate.utils.model_wo_softmax(self.model)
         else:
             innvestigate_model = self.model
+            
+        
         #Create the "analyzer", or the object that will generate the LRP heatmaps given an input sample
         analyzer = innvestigate.create_analyzer(analyzer, innvestigate_model)
         
-        #First, create some lists to hold the output
+        #Create empty array to store all heatmaps
         LRP_heatmaps_all = []
         
-        self.dataset.label_data_stack.transpose("sample","output").values
+        input_stacked = self.dataset.input_data_stack.transpose("sample","feature")
+        
+        LRP_dir = os.path.join(self.model_path,"LRP")
+        os.system("mkdir -p "+ LRP_dir)
+        
         #We will process all of the samples, although another good option is to only process the validation samples
-        for sample_ind in range(data_stacked_anomal.sizes["sample"]):
+        for sample_ind in range(12):#range(input_stacked.sizes["sample"]):
 
-              #Make a print statement so we know how long it is taking to process the samples
-            if (sample_ind%1000 == 0) & (sample_ind > 0):
-                print(sample_ind, np.nanmax)
-    
+            #Make a print statement so we know how long it is taking to process the samples
+            if (sample_ind%100 == 0) & (sample_ind > 0):
+                #print(sample_ind, np.nanmax)
                 print(str(sample_ind).zfill(3),end="\r")
     
-            LRP_heatmap = analyzer.analyze(data_stacked_anomal.isel(sample=[sample_ind]))
-    
-        LRP_heatmaps_all.append(LRP_heatmap)
+            LRP_heatmap = analyzer.analyze(input_stacked.isel(sample=[sample_ind]))
+            
+            sample = input_stacked.isel(sample=[sample_ind]).coords["sample"]#.isel(sample = sample_ind)
+            #return sample
+            #return np.array(LRP_heatmap)
+            LRP_heatmap_da = xr.DataArray(np.array(LRP_heatmap), 
+                                          dims=("sample","feature"),
+                                          coords=({"sample":sample,"feature": input_stacked.coords["feature"]})).unstack(dim="feature").unstack(dim="sample")
+            
+            LRP_heatmap_da.to_netcdf(os.path.join(LRP_dir,"sample_"+str(sample_ind)+".nc"))
+            
+        LRP_heatmap_da = xr.open_mfdataset(os.path.join(LRP_dir,"sample_*.nc"))
         
+        LRP_heatmap_da_coords = align_coords(self.dataset.input_data.coords,LRP_heatmap_da)
+        
+        heatmaps_filename = os.path.join(LRP_dir,"heatmaps.nc")
+        LRP_heatmap_da_coords.to_netcdf(heatmaps_filename)
+        
+        os.system("rm "+os.path.join(LRP_dir,"sample_*.nc"))
+        
+        self.heatmaps_filename = heatmaps_filename 

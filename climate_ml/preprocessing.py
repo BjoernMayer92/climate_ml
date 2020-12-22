@@ -26,6 +26,11 @@ def sellonlatbox(data, lon_min, lon_max, lat_min, lat_max):
              
     return data_cropped
 
+def min_max_scalar(data, dims):
+    data_min = data.min(dim=dims)
+    data_max = data.max(dim=dims)
+    
+    return (data - data_min) / (data_max -data_min)
 
 
 def anomaly(data, dims={"time"}):
@@ -141,3 +146,102 @@ def one_hot_encoder_xarray(data, encoding_dim, drop_dims=None):
     data_transformed_xr =  xr.DataArray(data_transformed, dims=["stacked", "dimension"], coords={"stacked":stacked_coords, "dimension": enc.get_feature_names()})
     data_transformed_xr_unstack = data_transformed_xr.unstack(dim="stacked")
     return data_transformed_xr_unstack.to_dataset(dim="variable")
+
+
+
+    
+def covariance (data_1, data_2, dims = ("time",)):
+    """
+    Calculates the covariance between two datasets over given common dimensions
+    
+    Parameters:
+    -----------
+    data_1: xarray object
+        xarray object with at least the dimension given by dims
+    data_2: xarray object
+        xarray object with at least the dimension given by dims
+    dims: string tuple
+        tuple of dimension names over which the covariance is calculated
+        
+    Returns:
+    --------
+    cov: xarray object
+        covariance between the two datasets over common dimension
+    """
+    
+    cov = xr.cov(data_1,data_2, dim=dims)
+    
+    return cov
+
+def correlation(data_1, data_2, dims= {"time"}):
+    """
+    Calculates correlation coefficient between two datasets over given common dimension
+    
+    Parameters:
+    -----------
+    data_1: xarray object
+        xarray object with at least the dimension given by dims
+    data_2: xarray object
+        xarray object with at least the dimension given by dims
+    dims: string tuple
+        tuple of dimension names over which the covariance is calculated
+        
+    Returns:
+    --------
+    corr: xarray object
+        correlation between the two datasets over common dimension
+    """
+    
+    cov = covariance(data_1, data_2, dims = dims)
+    
+    
+    # Calculates the size of the dimension over which the 
+    data_1_std = data_1.std(dim=dims)
+    data_2_std = data_2.std(dim=dims)
+    
+    corr = cov/(data_1_std*data_2_std)
+    
+    return corr
+
+
+
+
+def self_correlation(data ,dims = ("time",), ignore_dims = ()):
+    """
+    Calculates the correlation of a data object over given dimensions, while the remaining dimensions are shifted through all possible combinations
+    
+    Parameters:
+    -----------
+    data: xarray object
+        xarray object over which the self correlation should be calculated
+    dims: string tuple
+        tuole of dimension names over which correlation is calculated
+    
+    Returns:
+    --------
+    corr: xarray object
+        correlation values with all dimension that were not in the dims tuple doubled and shifted
+    """
+    
+    # create sets from tuples
+    dims_full_set = set(data.dims)
+    dims_set      = set(dims)
+    
+    print(dims_full_set)
+    print(dims_set)
+    
+    #subtract the dims_set from the full set
+    dims_remaining = tuple(dims_full_set.difference(set.union(dims_set,ignore_dims)))
+    
+    print(dims_remaining)
+    
+    # create dictionary for renaming dimensions
+    rename_dict  = {}
+    for dim in dims_remaining:
+        rename_dict[dim] = dim+"_shifted"
+        
+    corr = correlation(data,data.rename(rename_dict), dims = dims)
+    
+    return corr
+    
+    

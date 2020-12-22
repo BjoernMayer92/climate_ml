@@ -160,7 +160,7 @@ class map_widgets():
         
         """
         
-        if(self.plotting_done=False):
+        if(self.plotting_done==False):
             print("Error plots need to be created first")
             return 0 
             
