@@ -75,7 +75,7 @@ class map_widgets():
         os.system("mkdir -p "+ self.imagepath)
         
     
-    def create_plots(self,vmin=None, vmax=None, extent=[-90,20,0,90],figsize=(15,15),projection=ccrs.LambertConformal(), n_cols=2, cmap = matplotlib.cm.Reds, bad_color="gray"):
+    def create_plots(self,vmin=None, vmax=None, extent=[-90,20,0,90],figsize=(15,15),projection=ccrs.LambertConformal(), n_cols=2, cmap = matplotlib.cm.Reds, bad_color="gray", extend="both"):
         """
         Creates the plots for the map
         """
@@ -88,9 +88,9 @@ class map_widgets():
         
 
     
-        if(vmin):
+        if not (vmin):
             vmin = self.data.min().values
-        if(vmax):
+        if not (vmax):
             vmax = self.data.max().values
 
         
@@ -123,7 +123,7 @@ class map_widgets():
             
             data_parameter_tuple = self.data.sel(dictionary_var)
             
-              
+
             panel_list = self.data.coords[self.panel_dim].values
             for i, panel_coord in enumerate(panel_list):
                 
@@ -134,11 +134,14 @@ class map_widgets():
                 data_plot = np.ma.masked_where(np.isnan(data_tmp), data_tmp)
            
                 mesh = ax_ravel[i].pcolormesh(lon, lat, data_plot,vmin= vmin, vmax=vmax, cmap=cmap, transform=ccrs.PlateCarree(), antialiased=True, edgecolor='k', linewidth=0.3)
+               
+                
                 ax_ravel[i].set_title(panel_coord)
                 ax_ravel[i].coastlines()
             
             cbar=plt.colorbar(mesh, orientation='horizontal', shrink=1, cax = cbar_ax)
-
+            
+            
             # Generate filenames
             filename = "figure_"
             for i,dims in enumerate(self.dims_list):
@@ -172,6 +175,7 @@ class map_widgets():
             parameter_dictionary[dim] = widgets_arr[-1]
         
         out = widgets.interactive_output(self.show_plot, parameter_dictionary)
+        
         return out, widgets_arr
         
     def show_plot(self, **kwargs):
@@ -180,6 +184,8 @@ class map_widgets():
             filename = filename + str(dim)+"_"+str(parameter)+"_"
         filename = os.path.join(self.imagepath,filename+".png")    
         display(Image(filename))
+        
+        
         
 
         

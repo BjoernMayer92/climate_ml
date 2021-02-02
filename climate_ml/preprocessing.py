@@ -1,30 +1,7 @@
 import numpy as np
 import xarray as xr
 
-def sellonlatbox(data, lon_min, lon_max, lat_min, lat_max):
-    """
-    Selects a longitude-latitude box from a dataset
-    Parameters:
-    -----------
-    data: xarray dataset or dataarray
-        Input field, must have at least the dimension (lat,lon)
-    lon_min: float
-        Minimum longitude
-    lon_max: float
-        Maximum longitude
-    lat_min: float
-        Minimum latitude
-    lat_max: float
-        Maximum latitude
-        
-    Output:
-    -------
-    data_cropped: xarray dataset or dataarray
-        Cropped Field
-    """
-    data_cropped = data.where( (data.lat<lat_max)&(data.lat>lat_min)&(data.lon<lon_max)&(data.lon>lon_min)  )
-             
-    return data_cropped
+
 
 def min_max_scalar(data, dims):
     data_min = data.min(dim=dims)
@@ -64,7 +41,7 @@ def normalize(data, dims={"time"}):
     data_anom: xarray dataarray or dataset
         Calculated Anomalies
     """
-    return anomaly(data, dim=dims)/data.std(dim=dims)
+    return anomaly(data, dims=dims)/data.std(dim=dims)
 
     
 def climatology(data,dims={"time"}):
@@ -143,7 +120,11 @@ def one_hot_encoder_xarray(data, encoding_dim, drop_dims=None):
     
     data_transformed = enc.fit_transform(data_stacked.coords["stacked"].coords[encoding_dim].values.reshape(-1,1)).toarray()
     
-    data_transformed_xr =  xr.DataArray(data_transformed, dims=["stacked", "dimension"], coords={"stacked":stacked_coords, "dimension": enc.get_feature_names()})
+    feature_names = []
+    for name in enc.get_feature_names():
+        feature_names.append(name[3:])
+    
+    data_transformed_xr =  xr.DataArray(data_transformed, dims=["stacked", "dimension"], coords={"stacked":stacked_coords, "dimension": feature_names})
     data_transformed_xr_unstack = data_transformed_xr.unstack(dim="stacked")
     return data_transformed_xr_unstack.to_dataset(dim="variable")
 
@@ -206,7 +187,7 @@ def correlation(data_1, data_2, dims= {"time"}):
 
 
 
-def self_correlation(data ,dims = ("time",), ignore_dims = ()):
+def self_correlation(data , dims = ("time",), ignore_dims = ()):
     """
     Calculates the correlation of a data object over given dimensions, while the remaining dimensions are shifted through all possible combinations
     
@@ -245,3 +226,110 @@ def self_correlation(data ,dims = ("time",), ignore_dims = ()):
     return corr
     
     
+def eof_weight_latitude(field):
+    """
+    Weight fields with corresponding Latitude using the sqrt such that the covariance in the calculation of the eof is     
+    weighted with  cosine of latitude
+    
+    Parameters:
+    -----------
+    field: xarray object
+        Input field
+    
+    Returns:
+    --------
+    field_weightes : xarray obbject
+        Weighted Field
+    
+    """
+    
+    weights = xr.ufuncs.sqrt( xr.ufuncs.cos ( xr.ufuncs.deg2rad(field.lat) ) )
+    
+    return field * weights
+
+
+def eof(data, neof=3, ensemble=False, norm=True, ddof=1):
+    """
+    Calculates Empirical orthogonal functions and principal components 
+    
+    Parameters:
+    -----------
+    data: xarray DataObject
+        Dataobject must have at least a time dimension
+        
+    neof: integer
+        Number of EOFs that are calculated
+        
+    ensemble: boolean
+        If True data must have also a dimension called "ens". The dimensions "time" and "ens" will be stacked and 
+        calculation of EOF is done over this stacked dimension.
+    norm  boolean
+        Whether the corresponding PCs are normalized or not
+    ddof: integer
+        No Effect yet
+    
+    
+    Returns:
+    --------
+    data: xarray Dataset
+        dataset containing "EOF", "PCs"
+    
+    solver: 
+    
+    """
+    from eofs.xarray import Eof    
+    
+    
+    # If ensemble == True first stack the ens and time dimension together
+    if ensemble==True:
+        field = stack_ensemble(data)
+    if ensemble==False:
+        field = data
+    
+    
+    # preprocessing: Calculate Anomalies and Area Weight
+    field_anom        = anomaly(field, dims="time")
+    field_anom_weight = eof_weight_latitude(field_anom).transpose("time",...)
+    
+    #Calculate the Eof using xarray EOF package
+    solver            = Eof(field_anom_weight)
+    
+    # Save pcs and eof and explained variance in variables
+    pcs = solver.pcs(npcs=neof,pcscaling=0)
+    eof = solver.eofs(neofs=neof)
+    exp = solver.varianceFraction(neigs=neof)
+    
+
+    if ensemble==False:
+        if norm==True:
+            pcs=normalize(pcs, dims="time")
+        data = xr.Dataset({'PCs': pcs, "EOF": eof})
+            
+    # if ensemble == True return the pcs after unstacking and renaming the dimension
+    if ensemble==True:
+        pcs_unstacked = pcs.unstack(dim="time").rename({"real_time":"time"})
+        if norm==True:
+            pcs_unstacked_norm = normalize(dims=("time","ens"))
+        data = xr.Dataset({'PCs': pcs_unstacked_norm, "EOF": eof})
+    
+    return data, solver
+
+
+def stack_ensemble(field):
+    """
+    Stacks time and ensemble dimension into a new dimension
+    
+    Parameters:
+    -----------
+    field: xarray DataObject
+        Input field must have at least dimension ("time","ens")
+    
+    Returns:
+    field_stacked: xarray DataObject
+        Stacked Field with a multiindex "time" summarizing the original time dimension which has been renamed to 
+        "real_time" and "ens"
+    --------
+    
+    """
+
+    return field.rename({"time":"real_time"}).stack(time=("real_time","ens")).transpose("time","lat","lon")

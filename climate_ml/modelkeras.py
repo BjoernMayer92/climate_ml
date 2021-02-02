@@ -6,9 +6,7 @@ import innvestigate
 import datetime
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
-import sys
-import pathlib
-from .ml_stat import *
+import keras
 
 def align_coords(data_origin_coords, data):
     n_x = data_origin_coords["lon"].sizes["x"]
@@ -50,12 +48,11 @@ class ml_model():
     
     def load_model(self,path,name):
         model_path      = os.path.join(path,name)
-        self.model_path = model_path
         config_filename = os.path.join(model_path, "config.pkl")
         with open(config_filename, 'rb') as handle:
             dictionary = pickle.load(handle)
         
-        
+        self.model_path = model_path
         self.__dict__ = dictionary
         self.model = tf.keras.models.load_model(os.path.join(model_path,"model"))
     
@@ -75,16 +72,16 @@ class ml_model():
         self.n_neurons    = n_neurons
         self.activations  = activations
         self.regularizers = regularizers
-        self.output_activation = output_activation
+        
         self.optimizer = optimizer
         self.loss = loss
-        self.input_data_coords = self.dataset.input_data.coords
+        
         
         # Get number of remaining features after dropping Nan
-        self.n_feature = self.dataset.feature.size
-        self.n_output  = self.dataset.output.size
+        n_feature = self.dataset.feature.size
+        n_output  = self.dataset.output.size
         # Initialize  Input Layer with number of features 
-        input_layer = tf.keras.Input(shape = (self.n_feature,))
+        input_layer = keras.Input(shape = (n_feature,))
 
         # Start List of Layers
         layers = []
@@ -93,25 +90,25 @@ class ml_model():
         for i_layer, n_neuron in enumerate(self.n_neurons):
             if (i_layer==0):
                 # Initialize first hidden layer
-                layers.append(tf.keras.layers.Dense(n_neuron,
+                layers.append(keras.layers.Dense(n_neuron,
                                                  activation = self.activations[i_layer],
                                                  kernel_initializer='he_normal',
                                                  bias_initializer='he_normal', 
-                                                 kernel_regularizer = tf.keras.regularizers.l2(self.regularizers[i_layer]))(input_layer))
+                                                 kernel_regularizer = keras.regularizers.l2(self.regularizers[i_layer]))(input_layer))
             else:
-                layers.append(tf.keras.layers.Dense(n_neuron,
+                layers.append(keras.layers.Dense(n_neuron,
                                                  activation = self.activations[i_layer],
                                                  kernel_initializer='he_normal',
                                                  bias_initializer='he_normal', 
-                                                 kernel_regularizer = tf.keras.regularizers.l2(self.regularizers[i_layer]))(layers[i_layer]))
+                                                 kernel_regularizer = keras.regularizers.l2(self.regularizers[i_layer]))(layers[i_layer]))
         
         " Initialize output layer"
-        layers.append(tf.keras.layers.Dense(self.n_output,activation= output_activation)(layers[-1]))
+        layers.append(keras.layers.Dense(n_output,activation= output_activation)(layers[-1]))
         self.layers = layers
         
     def define_model(self, custom=True):
         
-        self.model = tf.keras.models.Model(self.layers[0],self.layers[-1])
+        self.model = keras.models.Model(self.layers[0],self.layers[-1])
         #if custom:
         #    self.model = keras.models.Model(layers[0],layers[-1])
         #else
@@ -176,7 +173,7 @@ class ml_model():
 
         """
 
-        intermediate_layer_model = tf.keras.models.Model(inputs=self.model.input, outputs=self.model.layers[layer_index].output)
+        intermediate_layer_model = keras.models.Model(inputs=self.model.input, outputs=self.model.layers[layer_index].output)
         intermediate_output      = intermediate_layer_model.predict(self.input)
 
         return intermediate_output
@@ -203,7 +200,7 @@ class ml_model():
                                             coords=(self.dataset.feature,np.arange(self.n_neurons[i_layer]))).unstack(dim="feature").rename("weights_layer"+str(i_layer)) 
 
                 if(curvi_input == True):
-                    weights_temp = align_coords(self.input_data_coords, weights_temp)
+                    weights_temp = align_coords(self.dataset.input_data.coords, weights_temp)
                     
                 weights_layers.append(weights_temp)
                 biases_layers.append(xr.DataArray(tmp_biases,
@@ -230,7 +227,7 @@ class ml_model():
          
         
         if(curvi_output == True):
-                    weights_temp = align_coords(self.input_data_coords, weights_temp)
+                    weights_temp = align_coords(self.dataset.input_data.coords, weights_temp)
         
         
         weights_layers.append(xr.DataArray(weights_temp))
@@ -248,120 +245,60 @@ class ml_model():
     
         
         
-    def LRP(self, input_data_stack, analyzer = "deep_taylor",softmax = True):
-        
-        # 
-        import keras
-        weights_path = os.path.join(self.model_path,"weights.h5")
-        self.model.save_weights(weights_path)
-        print("weights saved")
-        
-        # rebuild Model in keras:
-        
-        
-        # Initialize  Input Layer with number of features 
-        input_layer = keras.Input(shape = (self.n_feature,))
-
-        # Start List of Layers
-        layers = []
-        layers.append(input_layer)
-
-        for i_layer, n_neuron in enumerate(self.n_neurons):
-            if (i_layer==0):
-                # Initialize first hidden layer
-                layers.append(keras.layers.Dense(n_neuron,
-                                                 activation = self.activations[i_layer],
-                                                 kernel_initializer='he_normal',
-                                                 bias_initializer='he_normal', 
-                                                 kernel_regularizer = keras.regularizers.l2(self.regularizers[i_layer]))(input_layer))
-            else:
-                layers.append(keras.layers.Dense(n_neuron,
-                                                 activation = self.activations[i_layer],
-                                                 kernel_initializer='he_normal',
-                                                 bias_initializer='he_normal', 
-                                                 kernel_regularizer = keras.regularizers.l2(self.regularizers[i_layer]))(layers[i_layer]))
-        
-        " Initialize output layer"
-        layers.append(keras.layers.Dense(self.n_output,activation= self.output_activation)(layers[-1]))
-        layers = layers
-        
-        model = keras.models.Model(layers[0],layers[-1])
-        model.load_weights(weights_path)
-        
-      
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        #Remove the softmax layer from the model if the last layer is a softmax layer
-        if(softmax):
-            innvestigate_model = innvestigate.utils.model_wo_softmax(model)
-        else:
-            innvestigate_model = model
-            
-        
-        #Create the "analyzer", or the object that will generate the LRP heatmaps given an input sample
-        analyzer = innvestigate.create_analyzer(analyzer, innvestigate_model)
-        
-        #Create empty array to store all heatmaps
-        LRP_heatmaps_all = []
-        
-        input_stacked = input_data_stack.transpose("sample","feature")
-        
-        LRP_dir = os.path.join(self.model_path,"LRP")
-        os.system("mkdir -p "+ LRP_dir)
-        
-        #We will process all of the samples, although another good option is to only process the validation samples
-        for sample_ind in range(input_stacked.sizes["sample"]):
-
-            #Make a print statement so we know how long it is taking to process the samples
-            if (sample_ind%100 == 0) & (sample_ind > 0):
-                #print(sample_ind, np.nanmax)
-                print(str(sample_ind).zfill(3),end="\r")
+def LRP(model, analyzer = "deep_taylor",softmax = True):
     
-            LRP_heatmap = analyzer.analyze(input_stacked.isel(sample=[sample_ind]))
-            
-            sample = input_stacked.isel(sample=[sample_ind]).coords["sample"]#.isel(sample = sample_ind)
-            #return sample
-            #return np.array(LRP_heatmap)
-            LRP_heatmap_da = xr.DataArray(np.array(LRP_heatmap), 
-                                          dims=("sample","feature"),
-                                          coords=({"sample":sample,"feature": input_stacked.coords["feature"]})).unstack(dim="feature").unstack(dim="sample")
-            
-            LRP_heatmap_da.to_netcdf(os.path.join(LRP_dir,"sample_"+str(sample_ind)+".nc"))
-            
-        LRP_heatmap_da = xr.open_mfdataset(os.path.join(LRP_dir,"sample_*.nc"), use_cftime=True)
-        
-        LRP_heatmap_da_coords = align_coords(self.input_data_coords,LRP_heatmap_da)
-        
-        heatmaps_filename = os.path.join(LRP_dir,"heatmaps.nc")
-        LRP_heatmap_da_coords.to_netcdf(heatmaps_filename)
-        
-        os.system("rm "+os.path.join(LRP_dir,"sample_*.nc"))
-        
-        self.heatmaps_filename = heatmaps_filename 
-        
-        
-        
-    def bias_variance_decomposition_reg(self,train_test_split = 0.3, n_kfold = 2, N=5, seed = None):
-        x_train, x_test, y_train, y_test = kfold_train_test_split(input_data = self.dataset.input_data_stack,
-                                                                        label_data = self.dataset.label_data_stack,
-                                                                        train_test_split = train_test_split,
-                                                                        seed = seed,
-                                                                        n_kfold = n_kfold,                 
-                                                                  N=N)
-        kfold = train_x.sizes["kfold"]
-        
-        bias_arr = []
-        vari_arr = []
-        cent_arr = []
-        
-        for k in kfold:
-            # Compiles the model again to reinitiaize the weights
-            self.compile()
-        
+    from tensorflow.python.keras.models import load_model
+    
+    tfkeras_model = load_model(os.path.join(self.model_path,"model"))
+    
+    #Remove the softmax layer from the model if the last layer is a softmax layer
+
+    if(softmax):
+        innvestigate_model = innvestigate.utils.model_wo_softmax(tfkeras_model)
+    else:
+        innvestigate_model = tfkeras_model
+
+
+    #Create the "analyzer", or the object that will generate the LRP heatmaps given an input sample
+    analyzer = innvestigate.create_analyzer(analyzer, innvestigate_model)
+
+    #Create empty array to store all heatmaps
+    LRP_heatmaps_all = []
+
+    input_stacked = self.dataset.input_data_stack.transpose("sample","feature")
+
+    LRP_dir = os.path.join(self.model_path,"LRP")
+    os.system("mkdir -p "+ LRP_dir)
+
+    #We will process all of the samples, although another good option is to only process the validation samples
+    for sample_ind in range(12):#range(input_stacked.sizes["sample"]):
+
+        #Make a print statement so we know how long it is taking to process the samples
+        if (sample_ind%100 == 0) & (sample_ind > 0):
+            #print(sample_ind, np.nanmax)
+            print(str(sample_ind).zfill(3),end="\r")
+
+        LRP_heatmap = analyzer.analyze(input_stacked.isel(sample=[sample_ind]))
+
+        sample = input_stacked.isel(sample=[sample_ind]).coords["sample"]#.isel(sample = sample_ind)
+        #return sample
+        #return np.array(LRP_heatmap)
+        LRP_heatmap_da = xr.DataArray(np.array(LRP_heatmap), 
+                                      dims=("sample","feature"),
+                                      coords=({"sample":sample,"feature": input_stacked.coords["feature"]})).unstack(dim="feature").unstack(dim="sample")
+
+        LRP_heatmap_da.to_netcdf(os.path.join(LRP_dir,"sample_"+str(sample_ind)+".nc"))
+
+    LRP_heatmap_da = xr.open_mfdataset(os.path.join(LRP_dir,"sample_*.nc"))
+
+    LRP_heatmap_da_coords = align_coords(self.dataset.input_data.coords,LRP_heatmap_da)
+
+    heatmaps_filename = os.path.join(LRP_dir,"heatmaps.nc")
+    LRP_heatmap_da_coords.to_netcdf(heatmaps_filename)
+
+    os.system("rm "+os.path.join(LRP_dir,"sample_*.nc"))
+
+    self.heatmaps_filename = heatmaps_filename 
+
+
+

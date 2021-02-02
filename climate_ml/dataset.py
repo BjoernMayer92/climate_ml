@@ -51,12 +51,12 @@ class ml_dataset():
         self.label_data_coords = self.label_data.coords
         
     def stack_dimensions(self):
-        self.input_data_stack = self.input_data.stack(feature = self.feature_dims).dropna(dim="feature").stack(sample = self.sample_dims)
+        self.input_data_stack = self.input_data.stack(feature = self.feature_dims).dropna(dim="feature").stack(sample = self.sample_dims).transpose("sample","feature")
         
         if(self.output_dims):
-            self.label_data_stack = self.label_data.stack(sample  = self.sample_dims).stack(output=self.output_dims).dropna(dim="output")
+            self.label_data_stack = self.label_data.stack(sample  = self.sample_dims).stack(output=self.output_dims).dropna(dim="output").transpose("sample","output")
         else:
-            self.label_data_stack = self.label_data.stack(sample  = self.sample_dims).expand_dims(dim="output")
+            self.label_data_stack = self.label_data.stack(sample  = self.sample_dims).expand_dims(dim="output").transpose("sample","output")
         self.feature  = self.input_data_stack.feature
         self.sample   = self.label_data_stack.sample
         self.output   = self.label_data_stack.output
