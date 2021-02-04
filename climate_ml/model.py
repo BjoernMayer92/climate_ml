@@ -68,7 +68,8 @@ class ml_model():
                      regularizers, 
                      optimizer,
                      output_activation,
-                     loss):
+                     loss,
+                     name = ""):
         # Assign Values
         self.dataset      = dataset
 
@@ -107,19 +108,20 @@ class ml_model():
         
         " Initialize output layer"
         layers.append(tf.keras.layers.Dense(self.n_output,activation= output_activation)(layers[-1]))
-        self.layers = layers
+        #self.layers = layers
+        setattr(self,"layers"+name, layers)
         
-    def define_model(self, custom=True):
+    def define_model(self, custom=True, name = ""):
         
-        self.model = tf.keras.models.Model(self.layers[0],self.layers[-1])
-        #if custom:
-        #    self.model = keras.models.Model(layers[0],layers[-1])
-        #else
-            #self.model = CustomModel(layers[0],layers[-1])
-
+        layers = getattr(self,"layers"+name)
+        
+        setattr(self,"model"+name, tf.keras.models.Model(layers[0],layers[-1]))
+       
             
-    def compile(self, metrics = ["accuracy"]):
-        self.model.compile(optimizer = self.optimizer, loss= self.loss, metrics= metrics)
+    def compile(self, metrics = ["accuracy"],name = ""):
+        
+        model = getattr(self,"model"+name)
+        model.compile(optimizer = self.optimizer, loss= self.loss, metrics= metrics)
         
     def fit(self,epochs, batch_size , shuffle=True, validation_split = 0.3, verbose = 2,callbacks = None):
         self.fit_epochs           = epochs 
@@ -133,8 +135,9 @@ class ml_model():
         for callback in callbacks:
             callback_histories.append(callback(self.dataset.input_data_stack.values, self.dataset.label_data_stack.values, self.dataset.label_data_stack.coords))
             
+        if(validation_split != 0):
+            x_train, x_val, y_train, y_val = train_test_split(self.dataset.input_data_stack.values,self.dataset.label_data_stack.values, test_size = self.fit_validation_split)
         
-        x_train, x_val, y_train, y_val = train_test_split(self.dataset.input_data_stack.values,self.dataset.label_data_stack.values, test_size = self.fit_validation_split)
         
         
         history = self.model.fit(
@@ -348,20 +351,70 @@ class ml_model():
         
         
         
-    def bias_variance_decomposition_reg(self,train_test_split = 0.3, n_kfold = 2, N=5, seed = None):
+    def bias_variance_decomposition_reg(self, epochs, batch_size, callbacks, train_test_split = 0.3, n_kfold = 2, N=5, seed = None):
         x_train, x_test, y_train, y_test = kfold_train_test_split(input_data = self.dataset.input_data_stack,
-                                                                        label_data = self.dataset.label_data_stack,
-                                                                        train_test_split = train_test_split,
-                                                                        seed = seed,
-                                                                        n_kfold = n_kfold,                 
+                                                                  label_data = self.dataset.label_data_stack,
+                                                                  train_test_split = train_test_split,
+                                                                  seed = seed,
+                                                                  n_kfold = n_kfold,
                                                                   N=N)
-        kfold = train_x.sizes["kfold"]
+        n_kfold = x_train.sizes["kfold"]
         
+        return x_train, x_test, y_train, y_test
         bias_arr = []
         vari_arr = []
         cent_arr = []
         
-        for k in kfold:
+                    
+        predictions = []
+        models      = []
+            
+        stat_data = []
+        
+        for kfold in range(n_kfold):
             # Compiles the model again to reinitiaize the weights
-            self.compile()
+            self.define_layers(self.dataset,
+                               self.n_neurons,
+                               self.activations,
+                               self.regularizers,
+                               self.optimizer, 
+                               self.output_activation,
+                               self.loss,
+                               name = "_kfold")
+            
+            self.define_model(name = "_kfold")
+            self.compile(name = "_kfold")
+            
+            x_train_tmp = x_train.isel(kfold=kfold).dropna(dim="sample")
+            y_train_tmp = y_train.isel(kfold=kfold).dropna(dim="sample")
+            x_test_tmp  = x_test.isel(kfold=kfold).dropna(dim="sample")
+            y_test_tmp  = y_test.isel(kfold=kfold).dropna(dim="sample")
+            
+            for callback in callbacks:
+                callback_histories.append(callback(x_train_tmp.values,
+                                                   y_train_tmp.values,
+                                                   y_train_tmp.coords))
+            
+            history = self.model_kfold.fit(x_train_tmp.values,
+                                           y_train_tmp.values,
+                                           epochs=epochs,
+                                           batch_size=batch_size,
+                                           shuffle=True,
+                                           validation_data=(x_test_tmp.values,y_test_tmp.values),
+                                           verbose = verbose,
+                                           callbacks = callback_histories)
+        
+        # self.history = history Cant be saved with pickle
+        
+        
+        # Combine callback histories into one file
+            arr =[]
+            for callback in callback_histories:
+                arr.append(callback.data_xr)
+            self.stat_data = xr.merge(arr)
+            
+            self.decomposition = xr.concat(stat_data,dim ="kfold").assign_coords()
+           
+
+            
         

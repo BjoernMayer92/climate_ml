@@ -30,7 +30,7 @@ class map_widgets():
         Parameters:
         -----------
         data: xarray dataarray
-            Dataarray which is visualized
+            Dataarray which is visualized  needs to have a variable name
         path: str
             Path were figures should be stored and saved
         panel_dim: str

@@ -333,3 +333,32 @@ def stack_ensemble(field):
     """
 
     return field.rename({"time":"real_time"}).stack(time=("real_time","ens")).transpose("time","lat","lon")
+
+
+def area_weighted_mean(data, dims):
+    """
+    Calculates Area weighted mean of an xarray by multiplying each gridpoint with the cosine of latitude beforehand
+    
+    Parameters:
+    -----------
+    data: xarray DataArray
+        Dataarray containing the values must have at least dimension "lat"
+    dims: str or sequence of strings
+        Dimensions over which mean is taken
+    
+    Returns:
+    data_weighted: xarray Dataarray
+        DataArray containing the weighted mean over given dimensions
+    --------
+    
+    
+    """
+    
+    weights = xr.ufuncs.cos(np.deg2rad(data.lat))
+    weights.name = "weights"
+    
+    data_weighted = (data*weights).mean(dim=dims)
+    
+    return data_weighted
+    
+    

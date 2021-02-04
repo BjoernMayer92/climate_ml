@@ -4,7 +4,7 @@ import logging
 logging.basicConfig(format='%(asctime)s %(message)s')
 
 
-def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed = None, n_kfold= 5, N=5):
+def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed = None, n_kfold= 5, N=5, initial_shuffle = True):
     """
     Splits a given input and label variable in test dataset as well as kfold sample
     
@@ -29,6 +29,8 @@ def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed 
     N: int
         Number of permutations of the dataset
         
+    initial_shuffle: boolean
+        Determines whether the dataset is shuffled before the training/test split or not
     
     Returns:
     --------
@@ -50,9 +52,12 @@ def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed 
     
     input_data_length = input_data.sizes["sample"]
     
-    # Create a random permutation of the data in the set
-    permutation = np.random.RandomState(seed=None).permutation(input_data_length)
-    
+    # Create a random permutation of the data in the set if initial_shuffle is True. If not use a normal range as the first permutation, i.e. the dataset is not shuffled before the training test_split
+    if(initial_shuffle == True):
+        permutation = np.random.RandomState(seed=None).permutation(input_data_length)
+    else: 
+        permuation = np.range(input_data_length)
+        
     # Calculate index at which the dataset is split into training and testing
     split_index = int(input_data_length*(1-train_test_split))
     
@@ -114,3 +119,52 @@ def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed 
     train_y_split = nfold_y_combined.stack(kfold = ("N","k"))
     
     return train_x_split, test_x, train_y_split, test_y
+
+
+def entropy(x,y, category_dim):
+    """
+    Calculates the entropy of two dataarray x and y over a common dimension
+    
+    If y = 0 at some point the entropy is assumed to be zero
+    
+    Parameters:
+    ----------
+    x: xarray DataArray
+        First DataArray must have at least dimension category_dim
+    y; xarray DataArray
+        First DataArray must have at least dimension category_dim
+    
+    Returns:
+    --------
+    entropy : xarray DataArray
+        DataArray containing all the dimensions of the orgiginal DataArray except category_dim
+    """
+    
+    entropy = -xr.dot(x,xr.ufuncs.log(y,where=(y!=0)), dims = category_dim)
+    
+    return entropy
+
+
+def kullback_leibler_divergence(x,y, category_dim):
+    """
+    Calculates the Kullback Leibler Divergence of two dataarrays over a given category dimension
+    
+    
+    Parameters:
+    -----------
+    x: xarray DataArray
+        First DataArray must have at least dimension category_dim
+    y; xarray DataArray
+        First DataArray must have at least dimension category_dim
+    
+    Returns:
+    --------
+    KL: xarray DataArray
+        Kullback Leiber Divergence containing all the dimensions of the original dataarray except category_dim
+    
+    """
+    
+    KL = -entropy(x,x, category_dim = category_dim)+entropy(x,y, category_dim = category_dim)
+    
+    return KL
+
