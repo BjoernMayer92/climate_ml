@@ -4,6 +4,38 @@ import logging
 logging.basicConfig(format='%(asctime)s %(message)s')
 
 
+def kfold_predictions_average_pdf(predictions, category_dim = "output"):
+    """
+    Calculates the average of multiple model predictions over a given category dimension
+    
+    
+    Parameters:
+    -----------
+    
+    predictions: Xarray DataArray
+        DataArray of the predictions must have at least the dimension corresponding to category_dim and a dimension "kfold"
+        
+    category_dim: String
+        Name of the dimension corresponding to the category of the prediciton problem
+        
+    Returns:
+    --------
+    result: Xarray DataArray
+        Mean prediction over kfold dimension.
+    
+    """
+    
+    prob_logs          = xr.ufuncs.log(predictions,where=(predictions!=0))
+    prob_log_kmean     = prob_logs.mean(dim="kfold")
+    prob_log_kmean_exp = xr.ufuncs.exp(prob_log_kmean)
+    
+    
+    return  prob_log_kmean_exp/prob_log_kmean_exp.sum(dim=category_dim)
+    
+    
+
+
+
 def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed = None, n_kfold= 5, N=5, initial_shuffle = True):
     """
     Splits a given input and label variable in test dataset as well as kfold sample
@@ -168,3 +200,18 @@ def kullback_leibler_divergence(x,y, category_dim):
     
     return KL
 
+
+
+def bias_variance_decomposition(label, pred, category_dim = "output"):
+    """
+    
+    
+    """
+    
+    pred_avg = kfold_predictions_average_pdf(pred, category_dim = category_dim)
+    
+    cce = entropy(label, pred).mean(dim="kfold").rename("cross_entropy")
+    bia = kullback_leibler_divergence(label,    pred_avg, category_dim = category_dim).rename("bias")
+    var = kullback_leibler_divergence(pred_avg, pred,     category_dim = category_dim).mean(dim="kfold").rename("variance")
+    
+    xr.merge([cce,bias,vari])

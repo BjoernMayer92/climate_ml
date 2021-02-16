@@ -17,6 +17,27 @@ class ml_dataset():
                  sample_dims,
                  output_dims= None):
         
+        """
+        Parameters:
+        ----------
+        
+        raw_input_filename: str
+            Location of the input dataset
+        raw_label_filename: str 
+            Location of the label dataset
+        var_input_names: array strings
+            All variable names that are used as for the input. Example : ["density","temperature"]
+        var_label_names: array string
+            All variable names that are to be predicted. Example: ["pcs",]
+        feature_dims: str tuple
+            All dimensions of the input array that are combined to features
+        sample_dims: str tuple
+            All dimensions of input and label that are combined into a sample dimension
+        
+        
+        
+        """
+        
         self.input_data_filename = raw_input_filename
         self.label_data_filename = raw_label_filename
         
@@ -30,10 +51,23 @@ class ml_dataset():
         self.excluded_keys = []
     
     def initialize(self, chunks_dict = {"time":1}):
+        """
+        Opens the data
+        
+        Parameters:
+        chunks_dict: dictionary
+            Dictionary corrersponding to the chunk dimensions
+        
+        
+        """
+        
+        
+        
         self.chunks_dict = chunks_dict
-        self.input_data = xr.open_dataset(self.input_data_filename, use_cftime=True, chunks = self.chunks_dict)[self.var_input_names].to_array()
-        self.label_data = xr.open_dataset(self.label_data_filename, use_cftime=True, chunks = self.chunks_dict)[self.var_label_names].to_array()
-    
+        self.input_data = xr.open_dataset(self.input_data_filename, use_cftime=True, chunks = self.chunks_dict)[self.var_input_names].to_array(dim="variable")
+        self.label_data = xr.open_dataset(self.label_data_filename, use_cftime=True, chunks = self.chunks_dict)[self.var_label_names].to_array(dim="variable")
+        
+        # Save the coordinates
         self.input_data_coords  = self.input_data.coords  
         self.label_data_coords  = self.label_data.coords
         

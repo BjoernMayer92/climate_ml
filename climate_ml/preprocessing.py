@@ -362,3 +362,36 @@ def area_weighted_mean(data, dims):
     return data_weighted
     
     
+def split_year_season(data):
+    """
+    Splits the time dimension of an xarray dataObject into year and Season
+    
+    Parameters:
+    -----------
+    data: xarray DataObject
+        Must have at least a time dimension with datetime type
+        
+        
+    Returns:
+    --------
+    
+    data_season: xarray DataObject
+        Original data with year and month dimension instead of time
+    
+    xarray DataObject
+        
+    """
+    
+    season_dict = {"DJF":1,"MAM":4,"JJA":7,"SON":10}
+    
+    tmp_arr = []
+    for season in season_dict:
+        season_month = season_dict[season]
+    
+        tmp = data.where(data.time.dt.month==season_month,drop="True")
+        tmp = tmp.assign_coords(time=tmp.time.dt.year).rename({"time":"year"}).assign_coords(season=season)
+        tmp_arr.append(tmp)
+    
+    data_season = xr.concat(tmp_arr,dim = "season")
+    
+    return data_season

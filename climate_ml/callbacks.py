@@ -130,3 +130,18 @@ class callback_metrics_end_epoch(tf.keras.callbacks.Callback):
             setattr(self, name_xr, xr.concat( getattr(self,name_or), dim="epoch") )
             
         self.data_xr = xr.merge(metrics_arr)#.rename("metrics")
+        
+        
+        
+        
+class TimeHistory(tf.keras.callbacks.Callback):
+    
+    def __init__(self, input_data, label_data, label_data_coords):
+        self.setattr(self,start,0)
+        self.setattr(self,duration,0)
+
+    def on_train_begin(self, logs=None):
+        self.start = time.time()
+     
+    def on_train_end(self, logs = None):
+        self.duration = time.time() - self.start
