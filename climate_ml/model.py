@@ -23,32 +23,6 @@ def align_coords(data_origin_coords, data):
         
     
 
-def transform_history_xarray(history):
-    """
-    Transforms keras history object into an xarray object
-    
-    Parameters:
-    -----------
-    history: tensorflow.python.keras.callbacks.History
-        History File from a training
-    
-    Returns:
-    --------
-    history_xr: xarray DataArray
-        All key metrics in history transformed to an xarray
-        
-    """
-    
-    tmp = []
-    for key in history.history.keys():
-        Nepoch = len(history.history["loss"])
-        tmp.append( xr.DataArray(history.history[key], dims=["epoch"], coords = {"epoch":range(Nepoch) }).rename(key) ) 
-    
-    history_xr = xr.merge(tmp)
-    
-    return history_xr
-    
-    
     
     
 
@@ -151,11 +125,8 @@ class ml_model():
         model = getattr(self,"model"+name)
         model.compile(optimizer = self.optimizer, loss= self.loss, metrics= metrics)
         
-    def fit(self,epochs, batch_size , shuffle=True, validation_split = 0.3, verbose = 2,custom_callbacks = None, callbacks = None):
-        self.fit_epochs           = epochs 
-        self.fit_shuffle          = shuffle
-        self.fit_validation_split = validation_split
-        self.batch_size           = batch_size
+    def fit(self,epochs, batch_size , shuffle=True, validation_split = 0.3, verbose = 2,custom_callbacks = [], callbacks = []):
+
         """
         Fits the model given the hyperparameters supplied to this function
         
@@ -180,7 +151,13 @@ class ml_model():
         -------
         
         """
-            
+        
+        self.fit_epochs           = epochs 
+        self.fit_shuffle          = shuffle
+        self.fit_validation_split = validation_split
+        self.batch_size           = batch_size
+        
+        
         custom_callback_histories = []
         
         for callback in custom_callbacks:
@@ -208,8 +185,8 @@ class ml_model():
             verbose = verbose,
             callbacks = callback_histories_combined)
         
-        # self.history = history Cant be saved with pickle
         
+        self.history = history_xr(history)
         
         # Combine callback histories into one file
         arr =[]
@@ -217,7 +194,6 @@ class ml_model():
             arr.append(callback.data_xr)
         self.callback_data = xr.merge(arr)
         
-        return history
         
         
     def check_layer_output(self, layer_index=1):
@@ -435,6 +411,17 @@ class ml_model():
         
         
         
+        
+class bias_variance_decomposition_test():
+    def __init__(self, ml_model, regularizers, n_kfold):
+        self.model = ml_model
+        self.regularizers = regularizers
+        self.n_kfold = 
+        
+        
+        
+        
+        
     def bias_variance_decomposition_reg(self,regularizers, epochs, batch_size, custom_callbacks, callbacks, train_test_split = 0.3, n_kfold = 2, N=5, seed = None):
         """
         Calculates the bias variance composition for the given network
@@ -582,6 +569,71 @@ class ml_model():
         #return_call = xr.concat(call_arr, dim="regularizer_index")
         
         return return_data, return_weig, return_pred, return_hist, x_train, x_test, y_train, y_test 
+    
+    
+
+class history_xr():
+    """
+    Class that takes in keras history objects and saves them in an xarray
+    """
+    
+    
+    def __init__(self,history):
+        self.data = self.transform_history_xarray(history)
+        
+        
+    def transform_history_xarray(self, history):
+        
+        N_epoch = history.params["epochs"]
+        
+        tmp  = []
+        for key in history.history.keys():
+            tmp.append( xr.DataArray(history.history[key], dims = "epoch", coords = {"epoch": range(N_epoch)}).rename(key))
             
+        data = xr.merge(tmp)
             
+        return data.assign_coords(history.params)
+    
+    
+    def plot(self, ax= None, metrics=["loss","categorical_accuracy"], colors = ["Red","Blue"], linestyles = ["-","--"]):
+        """
+        Plots two metrics for validation and loss
+        
+        Right now works only with two metrics. More metrics might be implemented later with more y axis
+        
+        Parameters:
+        -----------
+        ax: matplotlib.axes
+            Axes where plot should be plotted. If None function creates automatically new figure
+        metrics: list of strings
+            Metrics that are plotted
+        colors: list of strings
+            Colors for each metric
+        linestyles: list of strings
+            linestyles for training and validation
+            
+        Returns:
+        --------
+        
+        """
+        
+        if ax ==None:
+            fig, ax1 = plt.subplots(1,1,figsize=(10,10))
+        else:
+            ax1 = ax
+            
+        ax2 = ax1.twinx()
+        
+        ax =[ax1,ax2]
+        ax[0].set_xlabel("epoch")
+        
+        for i, metric in enumerate(metrics):
+            ax[i].plot(self.data[        metric], color = colors[i], linestyle = linestyles[0], label = "training" )
+            ax[i].plot(self.data["val_"+ metric], color = colors[i], linestyle = linestyles[1], label = "validation")
+            ax[i].set_ylabel(metric)
+            
+        ax[0].legend()
+        
+        
+        
         
