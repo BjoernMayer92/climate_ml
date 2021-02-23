@@ -10,6 +10,8 @@ import sys
 import pathlib
 import matplotlib.pyplot as plt
 import logging
+import time
+import math
 
 from .ml_stat import *
 
@@ -407,156 +409,196 @@ class ml_model():
         os.system("rm "+os.path.join(LRP_dir,"sample_*.nc"))
         
         self.heatmaps_filename = heatmaps_filename 
-        def bias_variance_decomposition_reg(self,regularizers, epochs, batch_size, custom_callbacks, callbacks, train_test_split = 0.3, n_kfold = 2, N=5, seed = None):
-            """
-            #Calculates the bias variance composition for the given network
 
-            """
-            import time
-
-
-            # Split Train Test 
-            x_train, x_test, y_train, y_test = kfold_train_test_split(input_data = self.dataset.input_data_stack,
-                                                                      label_data = self.dataset.label_data_stack,
-                                                                      train_test_split = train_test_split,
-                                                                      seed = seed,
-                                                                      n_kfold = n_kfold,
-                                                                      N=N)
-
-
-            n_kfold = x_train.sizes["kfold"]
-
-            data_arr = []
-            pred_arr = []
-            weig_arr = []
-            hist_arr = []
-            call_arr = []
-
-
-            for regularizer_index in regularizers.regularizer_index:
-                start = time.time()
-
-                pred = []
-                weig = []
-                hist = []
-                call = []
-
-                for kfold in range(n_kfold):
-
-                    # Compiles the model again to reinitiaize the weights
-                    self.define_layers(self.dataset,
-                                       self.n_neurons,
-                                       self.activations,
-                                       regularizers.isel(regularizer_index = regularizer_index).values,
-                                       self.optimizer, 
-                                       self.output_activation,
-                                       self.loss,
-                                       name = "_kfold")
-
-                    # Defines the model with standard parameters
-                    self.define_model(name = "_kfold")
-
-                    # Compiles the model
-                    self.compile(name = "_kfold")
-
-                    # Select the training set
-                    x_train_tmp = x_train.isel(kfold=kfold).dropna(dim="sample")
-                    y_train_tmp = y_train.isel(kfold=kfold).dropna(dim="sample")
-
-
-
-                    # Prepare Callbacks
-                    custom_callback_histories = []
-                    callback_histories = []
-
-                    # Start the callbacks
-                    for callback in custom_callbacks:
-                        custom_callback_histories.append(callback(x_train_tmp.values,
-                                                           y_train_tmp.values,
-                                                           y_train_tmp.coords))
-                    for callback in callbacks:
-                        callback_histories.append(callback)
-
-
-
-                    # Fit the model
-                    callback_histories_combined = np.concatenate([custom_callback_histories, callback_histories]).tolist()
-                    history = self.model_kfold.fit(x_train_tmp.values,
-                                                   y_train_tmp.values,
-                                                   epochs=epochs,
-                                                   batch_size=batch_size,
-                                                   shuffle=True,
-                                                   validation_data=(x_test.values,y_test.values),
-                                                   verbose = 0,
-                                                   callbacks = callback_histories_combined)
-
-                    # Tramsform history back
-
-                    hist_tmp = transform_history_xarray(history)
-
-                    # Get predicitons on test set
-                    pred_tmp = self.model_kfold.predict(x_test.values)
-                    pred_tmp = xr.DataArray(pred_tmp, dims = ["sample","output"], coords = {"sample":x_test.coords["sample"],"output": y_test.coords["output"] })
-
-                    # Get weights
-                    weig_tmp = self.transform_weights(self,name = "_kfold")
-
-                    # Get cusom callback data
-                    tmp = []
-                    for callback in custom_callback_histories:
-                        tmp.append(callback.data_xr)
-                    call_tmp = xr.merge(tmp)
-
-                    # Gather data into arrays
-                    pred.append(pred_tmp.assign_coords(kfold=kfold))
-                    weig.append(weig_tmp.assign_coords(kfold=kfold))
-                    hist.append(hist_tmp.data.assign_coords(kfold=kfold))
-                    call.append(call_tmp.assign_coords(kfold=kfold))
-
-
-
-                # combine predictions
-                pred_kfold = xr.concat(pred, dim = "kfold", coords = {"kfold" : x_train.kfold}).assign_coords(regularizer_index = regularizer_index)
-                weig_kfold = xr.concat(weig, dim = "kfold", coords = {"kfold" : x_train.kfold}).assign_coords(regularizer_index = regularizer_index)
-                hist_kfold = xr.concat(hist, dim = "kfold", coords = {"kfold" : x_train.kfold}).assign_coords(regularizer_index = regularizer_index)
-
-                # Average the predictions
-                predictions_average_pdf = kfold_predictions_average_pdf(pred_kfold, category_dim="output")
-
-                # Calculate the crossentropy
-                cce  = entropy(y_test, pred_kfold, category_dim="output").mean(dim="kfold").rename("cross_entropy")
-
-                # Calculate Bias and Variances
-
-                bias = kullback_leibler_divergence(y_test, predictions_average_pdf,     category_dim="output").rename("bias")
-                vari = kullback_leibler_divergence(predictions_average_pdf, pred_kfold, category_dim = "output").mean(dim="kfold").rename("vari")
-
-                data_kfold = xr.merge([cce,bias,vari])
-
-
-                layer_names = []
-                for hidden in range(regularizers.sizes["layer"]):
-                    name = "hidden_layer_"+str(hidden)
-                    data_kfold = data_kfold.assign_coords({"hidden_layer_"+str(hidden) : regularizers.isel(layer = hidden).isel(regularizer_index=regularizer_index)})
-                    layer_names.append(name)
-
-                pred_arr.append(pred_kfold)
-                weig_arr.append(weig_kfold)
-                data_arr.append(data_kfold)
-                hist_arr.append(hist_kfold)
-
-                print("regularization term "+str(regularizer_index)+"/"+str(len(regularizers.regularizer_index))+" done  in "+ str(time.time()-start) +" s")
-
-            return_pred = xr.concat(pred_arr, dim="regularizer_index")
-            return_weig = xr.concat(weig_arr, dim="regularizer_index")
-            return_data = xr.concat(data_arr, dim="regularizer_index") 
-            return_hist = xr.concat(hist_arr, dim="regularizer_index")
-            #return_call = xr.concat(call_arr, dim="regularizer_index")
-
-            return return_data, return_weig, return_pred, return_hist, x_train, x_test, y_train, y_test 
-    
 
         
+class regularization_parameter_search():
+    def __init__(self, model):
+        self.parent_model = model
+        self.copy_parameters()
+        
+    def copy_parameters(self):
+        """
+        Copy all important parameters from the parent model 
+        
+        """
+        
+        self.dataset           = self.parent_model.dataset
+        self.n_neurons         = self.parent_model.n_neurons
+        self.activations       = self.parent_model.activations
+        self.output_activation = self.parent_model.output_activation
+        self.optimizer         = self.parent_model.optimizer
+        self.loss              = self.parent_model.loss
+        self.input_data_coords = self.parent_model.dataset.input_data.coords
+    
+    def train_test_split(self, train_test_split=0.2, seed = None):
+        """
+        Calculates the training test/split
+        
+        Parameters:
+        train_test_split: Float
+            Ratio of test samples to total samples
+        seed: Integer
+            Seed used for the random permutations. If seed = None then the current time is used as a seed
+        
+        """
+        
+        # If no seed is given use the system time as a seed
+        if seed==None:
+            seed = int(time.time())
+        
+        x_train, x_test, y_train, y_test = kfold_train_test_split(input_data = self.dataset.input_data_stack,
+                                                                  label_data = self.dataset.label_data_stack,
+                                                                  train_test_split = train_test_split,
+                                                                  seed = seed,
+                                                                  n_kfold =1,
+                                                                  N=1)
+        
+        self.seed    = seed
+        self.x_train = x_train
+        self.y_train = y_train
+        self.x_test  = x_test
+        self.y_test  = y_test
+        
+    
+    
+    
+    def define_models(self, regularizers):
+        """
+        Defines for each regularizer a new model
+        
+        Parameters:
+        regularizers: xarray DataArray
+            regularizer values must have dimension (regularizer_index, layer) where layer is the number of layers in the parent model
+            
+        Returns:
+        --------
+        
+        
+        """
+        
+        self.regularizers = regularizers
+        mlmo = []
+        for regularizer_index in self.regularizers.regularizer_index:
+            regularizer = self.regularizers.isel(regularizer_index=regularizer_index).values
+
+            
+            
+            model = ml_model()
+            model.define_layers( dataset         = self.dataset,
+                               n_neurons         = self.n_neurons,
+                               activations       = self.activations,
+                               regularizers      = regularizer,
+                               optimizer         = self.optimizer,
+                               output_activation = self.output_activation,
+                               loss              = self.loss)
+            model.define_model()
+            model.compile()
+            mlmo.append(model)
+            
+        self.models = mlmo
+        
+        
+    def visualize_histories(self, figsize=(20,20)):
+        """
+        Visualize the histories during the training process
+        
+        Parameters:
+        -----------
+        figsize: tuple
+            figure size
+        
+        
+        Returns:
+        -------
+        
+        """
+        
+        N = len(models)
+        
+        fig, ax = plt.subplots(nrows=math.ceil(N/4),ncols=4, figsize=figsize)
+        
+        ax_ravel = np.ravel(ax)
+        
+        for i, ax in enumerate(ax_ravel):
+            hist = self.hist[i]
+            regu = self.regularizers.isel(regularizer_index = hist.regularizer_index)
+            hist.plot(ax=ax)
+            
+            
+        
+    def train_models(self,callbacks = [], custom_callbacks =[],epochs=200, batch_size=32, learning_rate =0.01, curvi_input = True):
+        
+        hist = []
+        pred = []
+        weig = []
+        call = []
+        
+        for regularizer_index in self.regularizers.regularizer_index.values:
+            model = self.models[regularizer_index]
+            
+                    
+
+            # Prepare Callbacks
+            custom_callback_histories = []
+            callback_histories = []
+
+            # Start the callbacks
+            for callback in custom_callbacks:
+                custom_callback_histories.append(callback(self.x_train.values,
+                                                          self.y_train.values,
+                                                          self.y_train.coords))
+            for callback in callbacks:
+                callback_histories.append(callback)
+
+
+
+            # Coombine callbacks
+            callback_histories_combined = np.concatenate([custom_callback_histories, callback_histories]).tolist()
+                    
+            history = model.model.fit(self.x_train.values,
+                                      self.y_train.values,
+                                      epochs=epochs,
+                                      batch_size=batch_size,
+                                      shuffle=True,
+                                      validation_data=(self.x_test.values,self.y_test.values),
+                                      verbose = 1,
+                                      callbacks = callback_histories_combined)
+
+            hist_tmp = history_xr(history, coords = {"regularizer_index":regularizer_index})
+                    
+            # Get predicitons on test set
+            pred_tmp = model.model.predict(self.dataset.input_data_stack)
+            pred_tmp = xr.DataArray(pred_tmp, dims = ["sample","output"], coords = {"sample":self.dataset.input_data_stack.coords["sample"],"output": self.dataset.label_data_stack.coords["output"] })
+            
+            
+
+            # Get weights
+            model.transform_weights(curvi_input=curvi_input)
+            weig_tmp = model.parameters
+                    
+            # Get cusom callback data
+            
+            tmp = []
+            for callback in custom_callback_histories:
+                tmp.append(callback.data_xr)
+            
+            call_tmp = xr.merge(tmp)
+
+            # Gather data into arrays
+            pred.append(pred_tmp.assign_coords(regularizer_index = regularizer_index))
+            weig.append(weig_tmp.assign_coords(regularizer_index = regularizer_index))
+            hist.append(hist_tmp)
+            if custom_callbacks!=[]:
+                call.append(call_tmp)
+            
+        self.pred = xr.concat(pred, dim = "regularizer_index")
+        self.weig = xr.concat(weig, dim = "regularizer_index")
+        self.hist = hist
+        
+        if custom_callbacks!=[]:
+            call_xr = xr.concat(call, dim = "regularizer_index")
+            self.call_xr = call_xr
         
                 
 class bias_variance_decomposition_test():
@@ -649,7 +691,7 @@ class bias_variance_decomposition_test():
         mlmo_arr = []
         
         for regularizer_index in self.regularizers.regularizer_index.values:
-            #start = time.time()
+            start = time.time()
             
             
             pred = []
@@ -693,7 +735,7 @@ class bias_variance_decomposition_test():
                               batch_size=batch_size,
                               shuffle=True,
                               validation_data=(self.x_test.values,self.y_test.values),
-                              verbose = 1,
+                              verbose = 0,
                               callbacks = callback_histories_combined)
 
                     hist_tmp = history_xr(history)
@@ -717,13 +759,13 @@ class bias_variance_decomposition_test():
                     pred.append(pred_tmp.assign_coords(kfold=kfold))
                     weig.append(weig_tmp.assign_coords(kfold=kfold))
                     hist.append(hist_tmp.data.assign_coords(kfold=kfold))
-                    call.append(call_tmp.assign_coords(kfold=kfold))
+                    #call.append(call_tmp.assign_coords(kfold=kfold))
                 
             # combine predictions
             pred_kfold = xr.concat(pred, dim = "kfold", coords = {"kfold" : self.x_train.kfold}).assign_coords(regularizer_index = regularizer_index)
             weig_kfold = xr.concat(weig, dim = "kfold", coords = {"kfold" : self.x_train.kfold}).assign_coords(regularizer_index = regularizer_index)
             hist_kfold = xr.concat(hist, dim = "kfold", coords = {"kfold" : self.x_train.kfold}).assign_coords(regularizer_index = regularizer_index)
-            call_kfold = xr.concat(call, dim = "kfold", coords = {"kfold" : self.x_train.kfold}).assign_coords(regularizer_index = regularizer_index)
+            #call_kfold = xr.concat(call, dim = "kfold", coords = {"kfold" : self.x_train.kfold}).assign_coords(regularizer_index = regularizer_index)
                 
             # Average the predictions
             predictions_average_pdf = kfold_predictions_average_pdf(pred_kfold, category_dim="output")
@@ -749,16 +791,16 @@ class bias_variance_decomposition_test():
             weig_arr.append(weig_kfold)
             data_arr.append(data_kfold)
             hist_arr.append(hist_kfold)
-
+            print("regularization term "+str(regularizer_index)+"/"+str(len(self.regularizers.regularizer_index))+" done  in "+ str(time.time()-start) +" s")
+        
         return_pred = xr.concat(pred_arr, dim="regularizer_index")
         return_weig = xr.concat(weig_arr, dim="regularizer_index")
         return_data = xr.concat(data_arr, dim="regularizer_index") 
         return_hist = xr.concat(hist_arr, dim="regularizer_index")
-        return_call = xr.concat(call_arr, dim="regularizer_index")
+        #return_call = xr.concat(call_arr, dim="regularizer_index")
             
-        print("regularization term "+str(regularizer_index)+"/"+str(len(regularizers.regularizer_index))+" done  in "+ str(time.time()-start) +" s")
-        
-        return return_data, return_weig, return_pred, return_hist, return_call, 
+            
+        return return_data, return_weig, return_pred, return_hist#, return_call, 
                 
 class history_xr():
     """
@@ -766,17 +808,17 @@ class history_xr():
     """
     
     
-    def __init__(self,history):
-        self.data = self.transform_history_xarray(history)
+    def __init__(self,history, coords = {}):
+        self.data = self.transform_history_xarray(history, coords)
         
         
-    def transform_history_xarray(self, history):
+    def transform_history_xarray(self, history, coords):
         
         N_epoch = history.params["epochs"]
         
         tmp  = []
         for key in history.history.keys():
-            tmp.append( xr.DataArray(history.history[key], dims = "epoch", coords = {"epoch": range(N_epoch)}).rename(key))
+            tmp.append( xr.DataArray(history.history[key], dims = "epoch", coords = {"epoch": range(N_epoch)}).rename(key).assign_coords(coords))
             
         data = xr.merge(tmp)
             

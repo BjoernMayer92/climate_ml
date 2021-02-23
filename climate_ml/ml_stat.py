@@ -84,9 +84,12 @@ def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed 
     
     input_data_length = input_data.sizes["sample"]
     
-    # Create a random permutation of the data in the set if initial_shuffle is True. If not use a normal range as the first permutation, i.e. the dataset is not shuffled before the training test_split
+    # Create a random permutation of the data in the set if initial_shuffle is True. If not use a normal range as the first permutation, i.e. the dataset is not shuffled before the training test_split#
+
+    RandomState = np.random.RandomState(seed=seed)
+    
     if(initial_shuffle == True):
-        permutation = np.random.RandomState(seed=None).permutation(input_data_length)
+        permutation = RandomState.permutation(input_data_length)
     else: 
         permuation = np.range(input_data_length)
         
@@ -118,7 +121,7 @@ def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed 
     for n in range(N):
         
         # Create random permuation of the data in the training set
-        permutation = np.random.permutation(length_train)
+        permutation = RandomState.permutation(length_train)
         
         # Select the permutations
         train_x_shuffled = train_x.isel(sample = permutation)
@@ -136,6 +139,7 @@ def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed 
             kfold_y.append(train_y.isel(sample = np.arange(kfold_length*k,kfold_length*(k+1))).assign_coords(k=k))
 
         # Combine kfolds
+        
         kfold_x_combined = xr.concat(kfold_x, dim ="k")
         kfold_y_combined = xr.concat(kfold_y, dim ="k")
         
@@ -146,12 +150,17 @@ def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed 
     # combine nfolds
     nfold_x_combined = xr.concat(nfold_x, dim = "N")
     nfold_y_combined = xr.concat(nfold_y, dim = "N")
-    
+
     train_x_split = nfold_x_combined.stack(kfold = ("N","k"))
     train_y_split = nfold_y_combined.stack(kfold = ("N","k"))
-    
-    return train_x_split, test_x, train_y_split, test_y
+        
 
+    
+    
+    if ((n_kfold==1)&(N==1)):
+        return train_x_split.isel(kfold=0), test_x, train_y_split.isel(kfold=0), test_y
+    else:
+        return train_x_split, test_x, train_y_split, test_y
 
 def entropy(x,y, category_dim):
     """
