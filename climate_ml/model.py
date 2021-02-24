@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import logging
 import time
 import math
+import logging
+
 
 from .ml_stat import *
 
@@ -118,11 +120,13 @@ class ml_model():
         setattr(self,"layers"+name, layers)
         
     def define_model(self, custom=True, name = ""):
-        
+        logging.info("Start Function")
+
         layers = getattr(self,"layers"+name)
         
         setattr(self,"model"+name, tf.keras.models.Model(layers[0],layers[-1]))
-       
+        logging.info("Start Function")
+
             
     def compile(self, metrics = [tf.keras.metrics.categorical_accuracy], name = ""):
         
@@ -155,7 +159,8 @@ class ml_model():
         -------
         
         """
-        
+        logging.info("Start Function")
+
         self.fit_epochs           = epochs 
         self.fit_shuffle          = shuffle
         self.fit_validation_split = validation_split
@@ -198,7 +203,8 @@ class ml_model():
             arr.append(callback.data_xr)
         self.callback_data = xr.merge(arr)
         
-        
+        logging.info("End Function")
+
         
     def check_layer_output(self, layer_index=1):
         """
@@ -241,6 +247,8 @@ class ml_model():
             Name of the model.
         
         """
+        
+        logging.info("Start Function")
                 
         weights_layers = []
         biases_layers  = []
@@ -306,8 +314,8 @@ class ml_model():
         
         
         self.parameters = parameters
+        logging.info("End Function")
         
-    
         
         
     def LRP(self, input_data_stack, analyzer = "deep_taylor",softmax = True):
@@ -413,16 +421,19 @@ class ml_model():
 
         
 class regularization_parameter_search():
-    def __init__(self, model):
-        self.parent_model = model
-        self.copy_parameters()
+    def __init__(self):
+        logging.info("Start Function")
+
+        logging.info("End Function")
         
-    def copy_parameters(self):
+    def initialize(self, model):
         """
         Copy all important parameters from the parent model 
         
         """
-        
+                
+        logging.info("Start Function")
+        self.parent_model = model
         self.dataset           = self.parent_model.dataset
         self.n_neurons         = self.parent_model.n_neurons
         self.activations       = self.parent_model.activations
@@ -430,6 +441,7 @@ class regularization_parameter_search():
         self.optimizer         = self.parent_model.optimizer
         self.loss              = self.parent_model.loss
         self.input_data_coords = self.parent_model.dataset.input_data.coords
+        logging.info("End Function")
     
     def train_test_split(self, train_test_split=0.2, seed = None):
         """
@@ -442,7 +454,7 @@ class regularization_parameter_search():
             Seed used for the random permutations. If seed = None then the current time is used as a seed
         
         """
-        
+        logging.info("Start Function")
         # If no seed is given use the system time as a seed
         if seed==None:
             seed = int(time.time())
@@ -459,8 +471,8 @@ class regularization_parameter_search():
         self.y_train = y_train
         self.x_test  = x_test
         self.y_test  = y_test
-        
-    
+        logging.info("End Function")
+
     
     
     def define_models(self, regularizers):
@@ -476,7 +488,7 @@ class regularization_parameter_search():
         
         
         """
-        
+        logging.info("Start Function")
         self.regularizers = regularizers
         mlmo = []
         for regularizer_index in self.regularizers.regularizer_index:
@@ -498,6 +510,7 @@ class regularization_parameter_search():
             
         self.models = mlmo
         
+        logging.info("End Function")
         
     def visualize_histories(self, figsize=(20,20)):
         """
@@ -514,7 +527,9 @@ class regularization_parameter_search():
         
         """
         
-        N = len(models)
+        
+        
+        N = len(self.models)
         
         fig, ax = plt.subplots(nrows=math.ceil(N/4),ncols=4, figsize=figsize)
         
@@ -528,7 +543,13 @@ class regularization_parameter_search():
             
         
     def train_models(self,callbacks = [], custom_callbacks =[],epochs=200, batch_size=32, learning_rate =0.01, curvi_input = True):
+        """
+        Train Models for different regularization parameters
         
+        
+        """
+        logging.info("Start Function")
+
         hist = []
         pred = []
         weig = []
@@ -563,12 +584,12 @@ class regularization_parameter_search():
                                       shuffle=True,
                                       validation_data=(self.x_test.values,self.y_test.values),
                                       verbose = 1,
-                                      callbacks = callback_histories_combined)
+                                     )#callbacks = callback_histories_combined)
 
             hist_tmp = history_xr(history, coords = {"regularizer_index":regularizer_index})
                     
             # Get predicitons on test set
-            pred_tmp = model.model.predict(self.dataset.input_data_stack)
+            pred_tmp = model.model.predict(model.dataset.input_data_stack.values)
             pred_tmp = xr.DataArray(pred_tmp, dims = ["sample","output"], coords = {"sample":self.dataset.input_data_stack.coords["sample"],"output": self.dataset.label_data_stack.coords["output"] })
             
             
@@ -599,7 +620,57 @@ class regularization_parameter_search():
         if custom_callbacks!=[]:
             call_xr = xr.concat(call, dim = "regularizer_index")
             self.call_xr = call_xr
+            
+        logging.info("End Function")
         
+            
+    def save(self, folderpath, name):
+        """
+        
+        
+        """
+        
+        dictionary = self.__dict__.copy()
+        
+        
+        # Remove Models since they cant be saved by pickle
+        del dictionary ["parent_model"]
+        del dictionary ["models"]
+        
+        filename = os.path.join(folderpath,"config.pkl")
+        
+        os.mkdir(folderpath)
+        
+        handle = open(filename,"wb")
+        
+        pickle.dump(dictionary,handle)
+        
+        os.mkdir(os.path.join(folderpath,"models"))
+        
+        for i,model in enumerate(self.models):
+            model.save_model(os.path.join(folderpath,"models"),"model_"+str(i))
+            
+            
+    def load(self, folderpath):
+        
+        filename = os.path.join(folderpath,"config.pkl")
+        
+        handle = open(filename,"rb")
+        self.__dict__ = pickle.load(handle)
+        
+        N = self.regularizers.sizes["regularizer_index"]
+        models = []
+       
+        
+        for i in range(N):
+            model= ml_model()
+            model.load_model(os.path.join(folderpath,"models"),"model_"+str(i))
+            models.append(model)
+            
+        self.models = models
+        #for i in range()
+        
+
                 
 class bias_variance_decomposition_test():
     def __init__(self, ml_model):
@@ -679,6 +750,7 @@ class bias_variance_decomposition_test():
         
         self.n = len(x_train.kfold)
         
+
     
     def train_models(self,callbacks = [], custom_callbacks =[],epochs=200, batch_size=32, learning_rate =0.01):
         
@@ -853,7 +925,7 @@ class history_xr():
             ax1 = ax
             
         ax2 = ax1.twinx()
-        
+        ax2.set_ylim(0,1)
         ax =[ax1,ax2]
         ax[0].set_xlabel("epoch")
         

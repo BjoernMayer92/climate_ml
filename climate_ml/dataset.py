@@ -1,6 +1,6 @@
 import xarray as xr
 import pickle
-
+import logging
 
 class ml_dataset():
     """
@@ -37,7 +37,8 @@ class ml_dataset():
         
         
         """
-        
+        logging.info("Start Function")
+
         self.input_data_filename = raw_input_filename
         self.label_data_filename = raw_label_filename
         
@@ -49,6 +50,9 @@ class ml_dataset():
         self.var_label_names = var_label_names
         
         self.excluded_keys = []
+        logging.info("End Function")
+
+        
     
     def initialize(self, chunks_dict = {"time":1}):
         """
@@ -60,7 +64,8 @@ class ml_dataset():
         
         
         """
-        
+        logging.info("Start Function")
+
         
         
         self.chunks_dict = chunks_dict
@@ -73,18 +78,37 @@ class ml_dataset():
         
         self.excluded_keys.append("input_data")
         self.excluded_keys.append("label_data")
+        logging.info("End Function")
         
     def sel_input(self, **kwargs):
+        logging.info("Start Function")
+
+        self.initialize()
         self.input_data = self.input_data.sel(kwargs)
-        self.sel_input = kwargs
+        self.sel_input_kwargs = kwargs
         self.input_data_coords = self.input_data.coords
+        logging.info("End Function")
+        
+    def isel_input(self, **kwargs):
+        logging.info("Start Function")
+
+        self.initialize()
+        self.input_data = self.input_data.isel(kwargs)
+        self.isel_input_kwargs = kwargs
+        self.input_data_coords = self.input_data.coords
+        logging.info("End Function")
         
     def sel_label(self, **kwargs):
+        logging.info("Start Function")
+
+        self.initialize()
         self.label_data = self.label_data.sel(kwargs)
-        self.sel_label = kwargs
+        self.sel_label_kwargs = kwargs
         self.label_data_coords = self.label_data.coords
+        logging.info("End Function")
         
     def stack_dimensions(self):
+        logging.info("Start Function")
         self.input_data_stack = self.input_data.stack(feature = self.feature_dims).dropna(dim="feature").stack(sample = self.sample_dims).transpose("sample","feature")
         
         if(self.output_dims):
@@ -97,9 +121,10 @@ class ml_dataset():
         
         self.excluded_keys.append("input_data_stack")
         self.excluded_keys.append("label_data_stack")
-    
+        logging.info("End Function")
     
     def save(self, filename):
+        logging.info("Start Function")
         self.filename = filename
         #config_filename = os.path.join(filename)
         dictionary = self.__dict__.copy()
@@ -110,24 +135,28 @@ class ml_dataset():
        
         with open(filename, 'wb') as handle:
             pickle.dump(dictionary, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        logging.info("End Function")
+        
         
     def init_input(self):
-        
+        logging.info("Start Function")
         self.input_data = xr.open_dataset(self.input_data_filename, use_cftime=True, chunks = self.chunks_dict)[self.var_input_names].to_array()
         self.label_data = xr.open_dataset(self.label_data_filename, use_cftime=True, chunks = self.chunks_dict)[self.var_label_names].to_array()
-          
+        logging.info("End Function")
         
         
         
     def load(self, filename):
+        logging.info("Start Function")
         with open(filename, 'rb') as handle:
             dictionary = pickle.load(handle)
         
         self.__dict__ = dictionary
-    
+        logging.info("End Function")
     
     def calc_training_data(self):
+        logging.info("Start Function")
         self.input_data_stack = self.input_data_stack.compute()
         self.label_data_stack = self.label_data_stack.compute()
-        
+        logging.info("End Function")
        
