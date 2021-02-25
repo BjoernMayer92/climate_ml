@@ -443,7 +443,7 @@ class regularization_parameter_search():
         self.input_data_coords = self.parent_model.dataset.input_data.coords
         logging.info("End Function")
     
-    def train_test_split(self, train_test_split=0.2, seed = None):
+    def train_test_split(self,blocksize, train_test_split=0.2, seed = None):
         """
         Calculates the training test/split
         
@@ -459,12 +459,11 @@ class regularization_parameter_search():
         if seed==None:
             seed = int(time.time())
         
-        x_train, x_test, y_train, y_test = kfold_train_test_split(input_data = self.dataset.input_data_stack,
+        x_train, x_test, y_train, y_test = block_train_test_split(input_data = self.dataset.input_data_stack,
                                                                   label_data = self.dataset.label_data_stack,
                                                                   train_test_split = train_test_split,
                                                                   seed = seed,
-                                                                  n_kfold =1,
-                                                                  N=1)
+                                                                  blocksize=blocksize)
         
         self.seed    = seed
         self.x_train = x_train
@@ -475,7 +474,7 @@ class regularization_parameter_search():
 
     
     
-    def define_models(self, regularizers):
+    def define_models(self, regularizers, same_init =True):
         """
         Defines for each regularizer a new model
         
@@ -504,12 +503,21 @@ class regularization_parameter_search():
                                optimizer         = self.optimizer,
                                output_activation = self.output_activation,
                                loss              = self.loss)
+
+            
             model.define_model()
             model.compile()
+            if(regularizer_index==0):
+                weights = model.model.get_weights()
+            else:
+                if(same_init):
+                    model.model.set_weights(weights)
+            
+            
             mlmo.append(model)
             
         self.models = mlmo
-        
+    
         logging.info("End Function")
         
     def visualize_histories(self, figsize=(20,20)):
@@ -629,7 +637,7 @@ class regularization_parameter_search():
         
         
         """
-        
+        self.folderpath = folderpath
         dictionary = self.__dict__.copy()
         
         
@@ -652,7 +660,7 @@ class regularization_parameter_search():
             
             
     def load(self, folderpath):
-        
+        self.folderpath = folderpath
         filename = os.path.join(folderpath,"config.pkl")
         
         handle = open(filename,"rb")
@@ -669,6 +677,26 @@ class regularization_parameter_search():
             
         self.models = models
         #for i in range()
+        
+    def plot_history(self, figsize=(20,20)):
+        
+        N = self.regularizers.sizes["regularizer_index"]
+        
+        fig, ax = plt.subplots(nrows=math.ceil(N/4),ncols=4, figsize=figsize)
+
+        ax_ravel = np.ravel(ax)
+
+        for i, ax in enumerate(ax_ravel[:N]):
+            hist = self.hist[i]
+            regu = self.regularizers.isel(regularizer_index = hist.data.regularizer_index)
+            hist.plot(ax=ax)
+            ax.set_ylim(0,2)
+    
+        plt.tight_layout()
+        
+        
+        if hasattr(self, "folderpath"):
+            plt.savefig(os.path.join(self.folderpath,"history.png"))
         
 
                 

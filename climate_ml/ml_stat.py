@@ -32,8 +32,76 @@ def kfold_predictions_average_pdf(predictions, category_dim = "output"):
     
     return  prob_log_kmean_exp/prob_log_kmean_exp.sum(dim=category_dim)
     
-    
 
+def block_train_test_split(input_data, label_data, blocksize, train_test_split=0.2, seed = None):
+    """
+    Creates a block train test_split
+    
+    
+    """
+    
+    
+    RandomState = np.random.RandomState(seed = seed)
+        
+    input_data_coords = input_data.coords["sample"]
+    label_data_coords = label_data.coords["sample"]
+    
+    index_old = 0
+    input_arr = []
+    label_arr = []
+    
+    Nsample = input_data.sizes["sample"]
+    
+    
+    for i,index in enumerate(np.arange(0, Nsample, blocksize)[1:]):
+        indices = range(index_old,index)
+        
+        input_arr.append(input_data_coords.isel(sample=indices).assign_coords(block=i))
+        label_arr.append(label_data_coords.isel(sample=indices).assign_coords(block=i))
+        
+        index_old = index
+    
+    # make the rest that didnt fit into a block to the last block    
+    if index<Nsample-1:
+        indices = range(index,Nsample)
+        input_arr.append(input_data_coords.isel(sample=indices).assign_coords(block=i+1))
+        label_arr.append(label_data_coords.isel(sample=indices).assign_coords(block=i+1))
+        
+    input_blocked = xr.concat(input_arr, dim="block")
+    label_blocked = xr.concat(label_arr, dim="block")
+    
+    Nblock = input_blocked.sizes["block"]
+    
+    
+    split_index = int(Nblock*(1-train_test_split))
+    
+    permutation = np.random.permutation(range(Nblock))
+    
+    
+    train_block_indices = permutation[range(0,split_index)]
+    test_block_indices  = permutation[range(split_index,Nblock)]
+    
+    train_coords = input_blocked.isel(block=train_block_indices[0]).dropna(dim="sample")
+    for i in range(1,len(train_block_indices)):
+        train_coords = train_coords.combine_first(input_blocked.isel(block=train_block_indices[i]).dropna(dim="sample"))
+        
+    test_coords = input_blocked.isel(block=test_block_indices[0]).dropna(dim="sample")
+    for i in range(1,len(test_block_indices)):
+        test_coords = test_coords.combine_first(input_blocked.isel(block=test_block_indices[i]).dropna(dim="sample"))
+    
+    
+    train_x = input_data.sel(sample = train_coords)
+    train_y = label_data.sel(sample = train_coords)
+    test_x  = input_data.sel(sample = test_coords)
+    test_y  = label_data.sel(sample = test_coords)
+
+    return train_x, test_x, train_y, test_y
+        
+    
+    
+    
+    
+    
 
 
 def kfold_train_test_split(input_data, label_data, train_test_split = 0.3, seed = None, n_kfold= 5, N=5, initial_shuffle = True):
