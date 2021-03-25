@@ -80,28 +80,38 @@ class ml_dataset():
         self.excluded_keys.append("label_data")
         logging.info("End Function")
         
-    def sel_input(self, **kwargs):
+    def sel_input(self, init=True, **kwargs):
         logging.info("Start Function")
-
-        self.initialize()
+        if init:
+            self.initialize()
         self.input_data = self.input_data.sel(kwargs)
         self.sel_input_kwargs = kwargs
         self.input_data_coords = self.input_data.coords
         logging.info("End Function")
         
-    def isel_input(self, **kwargs):
+    def isel_input(self, init = True, **kwargs):
         logging.info("Start Function")
 
-        self.initialize()
+        if init:
+            self.initialize()
         self.input_data = self.input_data.isel(kwargs)
         self.isel_input_kwargs = kwargs
         self.input_data_coords = self.input_data.coords
         logging.info("End Function")
         
-    def sel_label(self, **kwargs):
+    def isel_label(self, init = True, **kwargs):
         logging.info("Start Function")
-
-        self.initialize()
+        if init:
+            self.initialize()
+        self.label_data = self.label_data.isel(kwargs)
+        self.isel_label_kwargs = kwargs
+        self.label_data_coords = self.label_data.coords
+        logging.info("End Function")
+        
+    def sel_label(self, init = True, **kwargs):
+        logging.info("Start Function")
+        if init:
+            self.initialize()
         self.label_data = self.label_data.sel(kwargs)
         self.sel_label_kwargs = kwargs
         self.label_data_coords = self.label_data.coords

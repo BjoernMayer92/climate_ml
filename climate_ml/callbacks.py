@@ -100,8 +100,6 @@ class callback_metrics_end_epoch(tf.keras.callbacks.Callback):
     def on_train_begin(self, logs= None):
         label_pred = self.model.predict(self.input_data)
         print(self.model.metrics)
-        pass
-        
         for metric in self.model.metrics:
             name = metric.__name__
             setattr(self, name, [])
@@ -112,10 +110,10 @@ class callback_metrics_end_epoch(tf.keras.callbacks.Callback):
         
     def on_epoch_end(self, epoch, logs = None):
         label_pred = self.model.predict(self.input_data)
-        
+        print(self.model.metrics)
         for metric in self.model.metrics:
             name = metric.__name__
-            
+            print(name)
             metric_da = xr.DataArray(metric( self.label_data, label_pred).numpy(), coords = self.label_data_coords["sample"].coords)
             getattr(self,name).append(metric_da.assign_coords({"epoch":epoch}))
             

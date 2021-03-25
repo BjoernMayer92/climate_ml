@@ -2,10 +2,9 @@ import xarray as xr
 import os
 import pickle
 import numpy as np
+import innvestigate
 import datetime
 from sklearn.model_selection import train_test_split
-import innvestigate
-
 import tensorflow as tf
 import sys
 import pathlib
@@ -14,7 +13,6 @@ import logging
 import time
 import math
 import logging
-import sys
 
 
 from .ml_stat import *
@@ -43,29 +41,21 @@ class ml_model():
         pass
         
     def save_model(self,path,name):
-        model_path      = os.path.abspath(os.path.join(path,name))
+        model_path      = os.path.join(path,name)
         self.model_path = model_path
         os.system("mkdir -p " +model_path)
         config_filename = os.path.join(model_path, "config.pkl")
         
         dictionary = self.__dict__.copy()
-        
-        delete_keys = ["model","dataset","optimizer","layers"]
-        
-        for key in delete_keys:
-            if(key in dictionary):
-                del dictionary [key]
-        
+        del dictionary["model"]
+        del dictionary["dataset"]
+        del dictionary["optimizer"]
+        del dictionary["layers"]
         
         with open(config_filename, 'wb') as handle:
             pickle.dump(dictionary, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
-        self.model.save(os.path.join(model_path,"model.h5"))
-        
-        
-        weights_path = os.path.join(self.model_path,"weights.h5")
-        self.model.save_weights(weights_path)
-        
+        self.model.save(os.path.join(model_path,"model"))
     
     def load_model(self,path,name):
         model_path      = os.path.join(path,name)
@@ -76,7 +66,7 @@ class ml_model():
         
         
         self.__dict__ = dictionary
-        self.model = tf.keras.models.load_model(os.path.join(model_path,"model.h5"))
+        self.model = tf.keras.models.load_model(os.path.join(model_path,"model"))
     
  
     def define_layers(self,
@@ -200,7 +190,7 @@ class ml_model():
             y_train,
             epochs=epochs,
             batch_size=batch_size,
-            shuffle=shuffle,
+            shuffle=True,
             validation_data=(x_val,y_val),
             verbose = verbose,
             callbacks = callback_histories_combined)
@@ -328,34 +318,15 @@ class ml_model():
         
         
         
-    def LRP(self,model_path,name, input_data_stack, analyzer = "deep_taylor",softmax = True,):
+    def LRP(self, input_data_stack, analyzer = "deep_taylor",softmax = True):
         """
         Calculates Layer-Wise-Relevance Propagation
         """
         # 
-        
-        #sys.path.append("/work/uo1075/u301101/tools/innvestigate")
-        self.model_path = os.path.join(model_path,name)
-        
-        
-        
-        
-        
-        import innvestigate
-        
         import keras
-        
-        
-        config_filename = os.path.join(self.model_path, "config.pkl")
-        with open(config_filename, 'rb') as handle:
-            dictionary = pickle.load(handle)
-        
-        
-        self.__dict__ = dictionary
-        
         weights_path = os.path.join(self.model_path,"weights.h5")
-        
-        
+        self.model.save_weights(weights_path)
+        print("weights saved")
         
         # rebuild Model in keras:
         
@@ -446,7 +417,8 @@ class ml_model():
         os.system("rm "+os.path.join(LRP_dir,"sample_*.nc"))
         
         self.heatmaps_filename = heatmaps_filename 
-        
+
+
         
 class regularization_parameter_search():
     def __init__(self):
@@ -675,16 +647,15 @@ class regularization_parameter_search():
         
         
         """
-        self.folderpath = os.path.abspath(folderpath)
+        self.folderpath = folderpath
         dictionary = self.__dict__.copy()
         
         
         # Remove Models since they cant be saved by pickle
-        delete_keys = ["parent_model","models","optimizer"]
+        del dictionary ["parent_model"]
+        del dictionary ["models"]
+        del dictionary ["optimizer"]
         
-        for key in delete_keys:
-            if(key in dictionary):
-                del dictionary [key]
         filename = os.path.join(folderpath,"config.pkl")
         
         os.mkdir(folderpath)
@@ -700,7 +671,7 @@ class regularization_parameter_search():
             
             
     def load(self, folderpath):
-        folderpath = os.path.abspath(folderpath)
+        
         filename = os.path.join(folderpath,"config.pkl")
         
         handle = open(filename,"rb")
@@ -732,7 +703,7 @@ class regularization_parameter_search():
             regu = self.regularizers.isel(regularizer_index = hist.data.regularizer_index)
             hist.plot(ax=ax)
             ax.set_ylim(0,2)
-            ax.set_title(str("{:.2f}".format(regu.isel(layer=0).values)))
+	    ax.set_title(str(regu.isel(layer=0).values))
     
         plt.tight_layout()
         
@@ -753,21 +724,12 @@ class regularization_parameter_search():
         lat = self.weig.lat
         lon = self.weig.lon
         
-        
-        
         for regularizer_index in self.regularizers.regularizer_index.values:
-            ax[0,regularizer_index].set_title(str("{:.6f}".format(self.regularizers.isel(regularizer_index=regularizer_index,layer=0).values)))
-
             for neuron in self.weig.hidden_layer_0.values:
-                vmin = self.weig.isel(regularizer_index = regularizer_index,hidden_layer_0 = neuron).isel(iselection)["weights_layer0"].transpose("y","x").min()
-                vmax = self.weig.isel(regularizer_index = regularizer_index,hidden_layer_0 = neuron).isel(iselection)["weights_layer0"].transpose("y","x").max()
-                
-                absmax = max([vmin,vmax])
-                
                 axi = ax[neuron, regularizer_index]
                 axi.coastlines()
                 axi.set_extent(extent, crs = ccrs.PlateCarree())
-                mesh = axi.pcolormesh(lon,lat, self.weig.isel(regularizer_index = regularizer_index,hidden_layer_0 = neuron).isel(iselection)["weights_layer0"].transpose("y","x"),vmin = -absmax, vmax= absmax, cmap = matplotlib.cm.RdBu_r, transform = ccrs.PlateCarree())
+                mesh = axi.pcolormesh(lon,lat, self.weig.isel(regularizer_index = regularizer_index,hidden_layer_0 = neuron).isel(iselection)["weights_layer0"].transpose("y","x"), cmap = matplotlib.cm.RdBu_r, transform = ccrs.PlateCarree())
                 
                 plt.colorbar(mesh, ax = axi, orientation="horizontal")
                     
