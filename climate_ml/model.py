@@ -50,7 +50,7 @@ class ml_model():
         
         dictionary = self.__dict__.copy()
         
-        delete_keys = ["model","dataset","optimizer","layers"]
+        delete_keys = ["model","optimizer","layers"]
         
         for key in delete_keys:
             if(key in dictionary):
@@ -98,6 +98,8 @@ class ml_model():
         self.optimizer = optimizer
         self.loss = loss
         self.input_data_coords = self.dataset.input_data.coords
+        self.input_data_stack_coords = self.dataset.input_data_stack.coords
+        
         
         # Get number of remaining features after dropping Nan
         self.n_feature = self.dataset.feature.size
@@ -144,7 +146,7 @@ class ml_model():
         self.metrics = metrics
         model.compile(optimizer = self.optimizer, loss= self.loss, metrics= metrics)
         
-    def fit(self,epochs, batch_size , shuffle=True, validation_split = 0.3, verbose = 2,custom_callbacks = [], callbacks = []):
+    def fit(self,epochs, batch_size , shuffle=True, validation_split = 0.3, verbose = 2,custom_callbacks = [], callbacks = [], seed = None,blocksize=None):
 
         """
         Fits the model given the hyperparameters supplied to this function
@@ -190,7 +192,10 @@ class ml_model():
         
             
         if(validation_split != 0):
-            x_train, x_val, y_train, y_val = train_test_split(self.dataset.input_data_stack.values,self.dataset.label_data_stack.values, test_size = self.fit_validation_split)
+            if(blocksize):
+                x_train, x_val, y_train, y_val = block_train_test_split(self.dataset.input_data_stack, self.dataset.label_data_stack, blocksize, train_test_split= self.fit_validation_split, seed = seed)
+            else:
+                x_train, x_val, y_train, y_val = train_test_split(self.dataset.input_data_stack.values,self.dataset.label_data_stack.values, test_size = self.fit_validation_split)
         
         
         callback_histories_combined = np.concatenate([custom_callback_histories, callback_histories]).tolist()
@@ -301,11 +306,15 @@ class ml_model():
         tmp_biases  = self.model.layers[-1].get_weights()[1]
         
         
-        weights_temp = xr.DataArray(tmp_weights,
-                                    dims = ("hidden_layer_"+str(i_layer),"output"),
-                                    coords = (np.arange(self.n_neurons[i_layer]),self.dataset.output)).unstack(dim="output").rename("weights_layer_output")
-         
-        
+        if self.dataset.output_dims:
+            weights_temp = xr.DataArray(tmp_weights,
+                                        dims = ("hidden_layer_"+str(i_layer),"output"),
+                                        coords = (np.arange(self.n_neurons[i_layer]),self.dataset.output)).unstack(dim="output").rename("weights_layer_output")
+        else:
+            weights_temp = xr.DataArray(tmp_weights,
+                                        dims = ("hidden_layer_"+str(i_layer),"output"),
+                                        coords = (np.arange(self.n_neurons[i_layer]),self.dataset.output)).rename("weights_layer_output")
+            
         # 
         if(curvi_output == True):
                     weights_temp = align_coords(self.input_data_coords, weights_temp)
@@ -313,10 +322,19 @@ class ml_model():
         
         weights_layers.append(xr.DataArray(weights_temp))
          
-        biases_layers.append(xr.DataArray(tmp_biases,
-                                         dims = ("output"),
-                                         coords = (self.dataset.output,)).rename("bias_layer_output").unstack(dim="output"))
+            
+        if self.dataset.output_dims:
+            biases_layers.append(xr.DataArray(tmp_biases,
+                                             dims = ("output"),
+                                             coords = (self.dataset.output,)).rename("bias_layer_output").unstack(dim="output"))
+
+        else:
+            biases_layers.append(xr.DataArray(tmp_biases,
+                                             dims = ("output"),
+                                             coords = (self.dataset.output,)).rename("bias_layer_output"))
        
+        
+        
         weights = xr.merge(weights_layers)
         biases  = xr.merge(biases_layers)
 
@@ -328,7 +346,7 @@ class ml_model():
         
         
         
-    def LRP(self,model_path,name, input_data_stack, analyzer = "deep_taylor",softmax = True,):
+    def LRP(self,model_path,name, input_data_stack, analyzer_str = "deep_taylos",softmax = True,):
         """
         Calculates Layer-Wise-Relevance Propagation
         """
@@ -407,7 +425,7 @@ class ml_model():
             
         
         #Create the "analyzer", or the object that will generate the LRP heatmaps given an input sample
-        analyzer = innvestigate.create_analyzer(analyzer, innvestigate_model)
+        analyzer = innvestigate.create_analyzer(analyzer_str, innvestigate_model)
         
         #Create empty array to store all heatmaps
         LRP_heatmaps_all = []
@@ -438,14 +456,24 @@ class ml_model():
             
         LRP_heatmap_da = xr.open_mfdataset(os.path.join(LRP_dir,"sample_*.nc"), use_cftime=True)
         
-        LRP_heatmap_da_coords = align_coords(self.input_data_coords,LRP_heatmap_da)
+        LRP_heatmap_da_coords = align_coords(self.input_data_coords,LRP_heatmap_da.compute()).assign_coords(analyzer=analyzer_str)
         
-        heatmaps_filename = os.path.join(LRP_dir,"heatmaps.nc")
+        heatmaps_filename = os.path.join(LRP_dir,"heatmaps_"+analyzer_str+".nc")
         LRP_heatmap_da_coords.to_netcdf(heatmaps_filename)
         
         os.system("rm "+os.path.join(LRP_dir,"sample_*.nc"))
         
         self.heatmaps_filename = heatmaps_filename 
+        
+
+        
+        
+        
+        
+    
+    
+    
+    
         
         
 class regularization_parameter_search():
@@ -732,7 +760,7 @@ class regularization_parameter_search():
             regu = self.regularizers.isel(regularizer_index = hist.data.regularizer_index)
             hist.plot(ax=ax)
             ax.set_ylim(0,2)
-            ax.set_title(str("{:.2f}".format(regu.isel(layer=0).values)))
+            ax.set_title(str("{:.6f}".format(regu.isel(layer=0).values)))
     
         plt.tight_layout()
         

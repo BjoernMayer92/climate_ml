@@ -124,7 +124,7 @@ class ml_dataset():
         if(self.output_dims):
             self.label_data_stack = self.label_data.stack(sample  = self.sample_dims).stack(output=self.output_dims).dropna(dim="output").transpose("sample","output")
         else:
-            self.label_data_stack = self.label_data.stack(sample  = self.sample_dims).expand_dims(dim="output").transpose("sample","output")
+            self.label_data_stack = self.label_data.stack(sample  = self.sample_dims).expand_dims(dim="output").stack().transpose("sample","output")
         self.feature  = self.input_data_stack.feature
         self.sample   = self.label_data_stack.sample
         self.output   = self.label_data_stack.output
