@@ -508,7 +508,7 @@ class regularization_parameter_search():
         self.metrics           = self.parent_model.metrics
         logging.debug("End Function")
     
-    def train_test_split(self,blocksize, train_test_split=0.2, seed = None):
+    def train_test_split(self, blocksize, train_test_split=0.2, seed = None):
         """
         Calculates the training test/split
         
@@ -747,7 +747,7 @@ class regularization_parameter_search():
         #for i in range()
         self.folderpath = folderpath
         
-    def plot_history(self, figsize=(20,20), ncols=4):
+    def plot_history(self, figsize=(20,20), metrics=["loss","categorical_accuracy"], ncols=4):
         
         N = self.regularizers.sizes["regularizer_index"]
         
@@ -758,8 +758,8 @@ class regularization_parameter_search():
         for i, ax in enumerate(ax_ravel[:N]):
             hist = self.hist[i]
             regu = self.regularizers.isel(regularizer_index = hist.data.regularizer_index)
-            hist.plot(ax=ax)
-            ax.set_ylim(0,2)
+            hist.plot(ax=ax, metrics = metrics )
+            #ax.set_ylim(0,2)
             ax.set_title(str("{:.6f}".format(regu.isel(layer=0).values)))
     
         plt.tight_layout()
@@ -768,6 +768,9 @@ class regularization_parameter_search():
         if hasattr(self, "folderpath"):
             plt.savefig(os.path.join(self.folderpath,"history.png"))
         
+        return fig,ax
+    
+    
     def plot_weights(self, figsize=(5,5), extent = [-90,20,0,90], **iselection):
         """
         
@@ -1056,7 +1059,7 @@ class history_xr():
             ax1 = ax
             
         ax2 = ax1.twinx()
-        ax2.set_ylim(0,1)
+        #ax2.set_ylim(0,1)
         ax =[ax1,ax2]
         ax[0].set_xlabel("epoch")
         

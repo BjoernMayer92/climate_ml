@@ -42,6 +42,7 @@ def block_train_test_split(input_data, label_data, blocksize, train_test_split=0
     
     
     RandomState = np.random.RandomState(seed = seed)
+
         
     input_data_coords = input_data.coords["sample"]
     label_data_coords = label_data.coords["sample"]
@@ -75,7 +76,7 @@ def block_train_test_split(input_data, label_data, blocksize, train_test_split=0
     
     split_index = int(Nblock*(1-train_test_split))
     
-    permutation = np.random.permutation(range(Nblock))
+    permutation = RandomState.permutation(range(Nblock))
     
     
     train_block_indices = permutation[range(0,split_index)]
