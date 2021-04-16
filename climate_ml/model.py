@@ -198,6 +198,11 @@ class ml_model():
                 x_train, x_val, y_train, y_val = train_test_split(self.dataset.input_data_stack.values,self.dataset.label_data_stack.values, test_size = self.fit_validation_split)
         
         
+        self.x_train_coords = x_train.coords
+        self.y_train_coords = y_train.coords
+        self.x_test_coords = x_test.coords
+        self.y_test_coords = y_test.coords
+        
         callback_histories_combined = np.concatenate([custom_callback_histories, callback_histories]).tolist()
         
         history = self.model.fit(
