@@ -200,8 +200,8 @@ class ml_model():
         
         self.x_train_coords = x_train.coords
         self.y_train_coords = y_train.coords
-        self.x_test_coords = x_test.coords
-        self.y_test_coords = y_test.coords
+        self.x_test_coords = x_val.coords
+        self.y_test_coords = y_val.coords
         
         callback_histories_combined = np.concatenate([custom_callback_histories, callback_histories]).tolist()
         
